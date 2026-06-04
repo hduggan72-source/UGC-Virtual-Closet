@@ -136,41 +136,44 @@ app.post('/api/generate/openai', async (req, res) => {
     const hasImages = avatarBase64 || outfitBase64;
 
     if (hasImages) {
-      // Use /v1/images/edits with FormData to pass reference images
-      // This is how gpt-image-1 accepts image inputs natively
-      const FormData = require('form-data');
-      const form = new FormData();
+      // Build multipart form manually — no external package needed
+      const boundary = '----FormBoundary' + Math.random().toString(36).slice(2);
+      const CRLF = '\r\n';
+      const parts = [];
 
-      // Add avatar image as reference
-      if (avatarBase64) {
-        const avatarBuf = Buffer.from(avatarBase64, 'base64');
-        form.append('image[]', avatarBuf, {
-          filename: 'avatar.jpg',
-          contentType: avatarMediaType || 'image/jpeg',
-        });
-      }
-      // Add outfit image as reference
-      if (outfitBase64) {
-        const outfitBuf = Buffer.from(outfitBase64, 'base64');
-        form.append('image[]', outfitBuf, {
-          filename: 'outfit.jpg',
-          contentType: outfitMediaType || 'image/jpeg',
-        });
-      }
+      const addField = (name, value) => {
+        parts.push(Buffer.from(
+          `--${boundary}${CRLF}Content-Disposition: form-data; name="${name}"${CRLF}${CRLF}${value}${CRLF}`
+        ));
+      };
 
-      form.append('prompt', prompt);
-      form.append('model', 'gpt-image-1');
-      form.append('n', '1');
-      form.append('size', size);
-      form.append('quality', 'high');
+      const addFile = (name, filename, mime, b64data) => {
+        const header = `--${boundary}${CRLF}Content-Disposition: form-data; name="${name}"; filename="${filename}"${CRLF}Content-Type: ${mime}${CRLF}${CRLF}`;
+        parts.push(Buffer.from(header));
+        parts.push(Buffer.from(b64data, 'base64'));
+        parts.push(Buffer.from(CRLF));
+      };
+
+      addField('model', 'gpt-image-1');
+      addField('prompt', prompt);
+      addField('n', '1');
+      addField('size', size);
+      addField('quality', 'high');
+
+      if (avatarBase64) addFile('image[]', 'avatar.jpg', avatarMediaType || 'image/jpeg', avatarBase64);
+      if (outfitBase64) addFile('image[]', 'outfit.jpg', outfitMediaType || 'image/jpeg', outfitBase64);
+
+      parts.push(Buffer.from(`--${boundary}--${CRLF}`));
+      const body = Buffer.concat(parts);
 
       const r = await fetch('https://api.openai.com/v1/images/edits', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-          ...form.getHeaders(),
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': body.length,
         },
-        body: form,
+        body,
       });
 
       const data = await r.json();
