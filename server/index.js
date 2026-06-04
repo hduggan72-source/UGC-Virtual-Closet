@@ -127,27 +127,75 @@ app.post('/api/analyze-outfit', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// OPENAI DALL-E 3
+// OPENAI GPT-IMAGE-1 (multimodal — sends avatar + outfit as reference images)
 app.post('/api/generate/openai', async (req, res) => {
-  const { prompt, size = '1024x1024' } = req.body;
+  const { prompt, avatarBase64, avatarMediaType, outfitBase64, outfitMediaType, size = '1024x1024' } = req.body;
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'No OPENAI_API_KEY' });
+
   try {
-    const r = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({ model: 'dall-e-3', prompt, n: 1, size, quality: 'standard' })
-    });
-    const data = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'OpenAI error' });
-    const imageUrl = data.data?.[0]?.url;
-    const revised  = data.data?.[0]?.revised_prompt;
-    if (!imageUrl) return res.status(500).json({ error: 'No image URL from OpenAI' });
-    const imgRes = await fetch(imageUrl);
-    const buffer = await imgRes.arrayBuffer();
-    res.json({ imageBase64: Buffer.from(buffer).toString('base64'), revisedPrompt: revised });
+    const hasImages = avatarBase64 || outfitBase64;
+
+    if (hasImages) {
+      // Use /v1/images/edits with FormData to pass reference images
+      // This is how gpt-image-1 accepts image inputs natively
+      const FormData = require('form-data');
+      const form = new FormData();
+
+      // Add avatar image as reference
+      if (avatarBase64) {
+        const avatarBuf = Buffer.from(avatarBase64, 'base64');
+        form.append('image[]', avatarBuf, {
+          filename: 'avatar.jpg',
+          contentType: avatarMediaType || 'image/jpeg',
+        });
+      }
+      // Add outfit image as reference
+      if (outfitBase64) {
+        const outfitBuf = Buffer.from(outfitBase64, 'base64');
+        form.append('image[]', outfitBuf, {
+          filename: 'outfit.jpg',
+          contentType: outfitMediaType || 'image/jpeg',
+        });
+      }
+
+      form.append('prompt', prompt);
+      form.append('model', 'gpt-image-1');
+      form.append('n', '1');
+      form.append('size', size);
+      form.append('quality', 'high');
+
+      const r = await fetch('https://api.openai.com/v1/images/edits', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          ...form.getHeaders(),
+        },
+        body: form,
+      });
+
+      const data = await r.json();
+      if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'OpenAI error' });
+      const b64 = data.data?.[0]?.b64_json;
+      if (!b64) return res.status(500).json({ error: 'No image returned from OpenAI' });
+      return res.json({ imageBase64: b64 });
+
+    } else {
+      // Plain text generation fallback (no images)
+      const r = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({ model: 'gpt-image-1', prompt, n: 1, size, quality: 'high' })
+      });
+      const data = await r.json();
+      if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'OpenAI error' });
+      const b64 = data.data?.[0]?.b64_json;
+      if (!b64) return res.status(500).json({ error: 'No image returned from OpenAI' });
+      return res.json({ imageBase64: b64 });
+    }
+
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

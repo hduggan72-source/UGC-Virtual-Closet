@@ -451,21 +451,21 @@ header h1 { font-family: 'Cormorant Garamond', serif; font-size: 1.7rem; font-we
     <div>
       <div class="panel-label" style="margin-bottom:9px">Image Generator</div>
       <div class="provider-selector" id="providerSelector">
-        <label class="provider-radio selected" id="prov-grok">
-          <input type="radio" name="imgprov" value="grok" checked onchange="selectProvider('grok')">
+        <label class="provider-radio selected" id="prov-openai">
+          <input type="radio" name="imgprov" value="openai" checked onchange="selectProvider('openai')">
+          <span>
+            <div class="prov-name">OpenAI GPT-Image-1</div>
+            <div class="prov-model">gpt-image-1 · avatar + outfit vision</div>
+          </span>
+          <span class="prov-avail" id="pavail-openai">—</span>
+        </label>
+        <label class="provider-radio" id="prov-grok">
+          <input type="radio" name="imgprov" value="grok" onchange="selectProvider('grok')">
           <span>
             <div class="prov-name">xAI Grok</div>
             <div class="prov-model">grok-imagine-image</div>
           </span>
           <span class="prov-avail" id="pavail-grok">—</span>
-        </label>
-        <label class="provider-radio" id="prov-openai" style="opacity:0.45;pointer-events:none">
-          <input type="radio" name="imgprov" value="openai" disabled>
-          <span>
-            <div class="prov-name">OpenAI DALL·E 3</div>
-            <div class="prov-model">dall-e-3 · 1024px</div>
-          </span>
-          <span class="prov-miss">Coming Soon</span>
         </label>
         <label class="provider-radio" id="prov-google" style="opacity:0.45;pointer-events:none">
           <input type="radio" name="imgprov" value="google" disabled>
@@ -620,14 +620,14 @@ let outfits = [];
 let selectedId = null;
 let activePlatform = 'Instagram';
 let activeFilter = 'all';
-let activeProvider = 'grok';
+let activeProvider = 'openai';
 let activeFraming = '3/4 shot, head to mid-thigh';
 let avatarSrc = null;
 let saveTimer = null;
 let currentResultB64 = null;
 let generationHistory = [];
 let serverProviders = {};
-activeProvider = 'grok';
+activeProvider = 'openai';
 
 const STORAGE_KEY = 'vc_v3';
 
@@ -1087,14 +1087,27 @@ async function generateImage() {
   document.getElementById('resultPlaceholder').style.display = 'none';
   document.getElementById('resultPanel').classList.remove('show');
   document.getElementById('resultGenerating').classList.add('show');
-  document.getElementById('generatingLabel').textContent = `Generating with ${providerLabel(activeProvider)}…`;
+  document.getElementById('generatingLabel').textContent = activeProvider === 'openai' ? 'GPT-Image-1 reading avatar + outfit…' : `Generating with ${providerLabel(activeProvider)}…`;
   document.getElementById('generateBtn').disabled = true;
 
   try {
+    // For OpenAI gpt-image-1: send avatar and outfit images for true likeness
+    let generatePayload = { prompt };
+    if (activeProvider === 'openai') {
+      if (avatarSrc) {
+        generatePayload.avatarBase64   = avatarSrc.split(',')[1];
+        generatePayload.avatarMediaType = avatarSrc.split(';')[0].split(':')[1] || 'image/jpeg';
+      }
+      const outfit = outfits.find(o => o.id === selectedId);
+      if (outfit) {
+        generatePayload.outfitBase64   = outfit.src.split(',')[1];
+        generatePayload.outfitMediaType = outfit.src.split(';')[0].split(':')[1] || 'image/jpeg';
+      }
+    }
     const r = await fetch(`/api/generate/${activeProvider}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify(generatePayload)
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Generation failed');
@@ -1141,7 +1154,7 @@ async function generateImage() {
 }
 
 function providerLabel(p) {
-  return { openai:'DALL·E 3', grok:'Grok', google:'Imagen 3' }[p] || p;
+  return { openai:'GPT-Image-1', grok:'Grok', google:'Imagen 3' }[p] || p;
 }
 
 // ════════════════════════════════════════════
