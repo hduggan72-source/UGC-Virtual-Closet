@@ -502,6 +502,9 @@ header h1 { font-family: 'Cormorant Garamond', serif; font-size: 1.7rem; font-we
         <button class="btn" id="copyBtn" onclick="copyPrompt()">Copy Prompt</button>
         <button class="btn" onclick="clearAll_prompt()">Clear</button>
       </div>
+      <button class="btn" id="chatgptBtn" onclick="openInChatGPT()" style="width:100%;border-color:var(--accent);color:var(--accent);font-size:.6rem;letter-spacing:.12em" title="Copy prompt and open ChatGPT for highest quality generation">
+        ↗ Open in ChatGPT
+      </button>
     </div>
 
   </div>
@@ -1261,6 +1264,43 @@ function clearAll_prompt() {
   document.getElementById('promptOutput').value = '';
   selectedId = null;
   renderGrid();
+}
+
+async function openInChatGPT() {
+  const prompt = document.getElementById('promptOutput').value;
+  if (!prompt) { showToast('Build a prompt first'); return; }
+
+  const outfit = outfits.find(o => o.id === selectedId);
+  const avatarDesc = document.getElementById('avatarDesc').value.trim();
+
+  let instructions = 'Generate a fashion image using the attached reference photos.\n\n';
+  instructions += 'AVATAR REFERENCE: The first image is my avatar — match her face, hair, skin tone, and body type closely.\n';
+  if (outfit) instructions += 'OUTFIT REFERENCE: The second image is the outfit flat lay — recreate it exactly as worn.\n\n';
+  instructions += 'PROMPT:\n' + prompt;
+
+  await navigator.clipboard.writeText(instructions);
+
+  const outfitName = outfit ? outfit.name : '';
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(26,22,18,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = '<div style="background:var(--warm-white);border-radius:6px;padding:32px;max-width:460px;width:100%;font-family:Jost,sans-serif">'
+    + '<div style="font-size:.6rem;letter-spacing:.25em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">Open in ChatGPT</div>'
+    + '<h3 style="font-family:Cormorant Garamond,serif;font-size:1.4rem;font-weight:400;margin-bottom:16px">3 steps for best results</h3>'
+    + '<ol style="font-size:.8rem;line-height:2.2;color:var(--muted);padding-left:18px;margin-bottom:20px">'
+    + '<li>ChatGPT is opening in a new tab</li>'
+    + '<li>Upload your <strong style="color:var(--ink)">avatar photo</strong>' + (outfitName ? ' + <strong style="color:var(--ink)">' + outfitName + '</strong> outfit image' : '') + ' as attachments</li>'
+    + '<li>Paste (<strong style="color:var(--ink)">Ctrl+V / Cmd+V</strong>) — prompt already copied!</li>'
+    + '</ol>'
+    + '<div style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:12px;font-size:.7rem;font-family:Cormorant Garamond,serif;font-style:italic;color:var(--muted);margin-bottom:20px;max-height:120px;overflow-y:auto;line-height:1.6;white-space:pre-wrap">' + instructions + '</div>'
+    + '<div style="display:flex;gap:8px">'
+    + '<button onclick="this.closest('[style*=fixed]').remove()" style="flex:1;padding:10px;font-family:Jost,sans-serif;font-size:.63rem;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;border:1.5px solid var(--border);border-radius:2px;background:transparent;color:var(--muted)">Close</button>'
+    + '<button onclick="navigator.clipboard.writeText(document.getElementById('promptOutput').value).then(()=>{this.textContent='Copied!'})" style="flex:1;padding:10px;font-family:Jost,sans-serif;font-size:.63rem;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;border:1.5px solid var(--ink);border-radius:2px;background:var(--ink);color:var(--cream)">Copy Prompt Only</button>'
+    + '</div></div>';
+
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  window.open('https://chatgpt.com', '_blank');
+  showToast('ChatGPT opened — paste prompt and attach your photos');
 }
 
 // ════════════════════════════════════════════
