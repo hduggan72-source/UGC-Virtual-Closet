@@ -691,7 +691,7 @@ function loadFromStorage() {
     outfits = d.outfits || [];
     avatarSrc = d.avatarSrc || null;
     activePlatform = d.activePlatform || 'Instagram';
-    generationHistory = d.history || [];
+    generationHistory = []; // history is session-only, not persisted
 
     document.getElementById('avatarDesc').value  = d.avatarDesc  || '';
     document.getElementById('avatarStyle').value = d.avatarStyle || '';
@@ -722,7 +722,7 @@ function saveAll() {
       avatarStyle:    document.getElementById('avatarStyle').value,
       activePlatform,
       mood:           document.getElementById('moodSelect').value,
-      history:        generationHistory.slice(0, 6),  // keep small to save localStorage space
+      // history intentionally excluded from localStorage — kept in memory only to avoid storage limits
     }));
     updateSaveStatus('saved');
     updateStorageInfo();
@@ -873,6 +873,20 @@ function compressImage(file, maxWidth, quality, cb) {
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+function compressDataUrl(dataUrl, maxWidth, quality, cb) {
+  const img = new Image();
+  img.onload = () => {
+    const scale = Math.min(1, maxWidth / img.width);
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    cb(canvas.toDataURL('image/jpeg', quality));
+  };
+  img.src = dataUrl;
 }
 
 function toBase64(file, cb) {
@@ -1131,17 +1145,20 @@ async function generateImage() {
     document.getElementById('resultGenerating').classList.remove('show');
     document.getElementById('resultPanel').classList.add('show');
 
-    // add to history
+    // add to history — compress thumbnail to save memory
     const outfit = outfits.find(o => o.id === selectedId);
-    generationHistory.unshift({
-      src,
-      name: outfit?.name || 'Generated Look',
-      provider: activeProvider,
-      ts: Date.now(),
+    compressDataUrl(src, 300, 0.7, (thumb) => {
+      generationHistory.unshift({
+        src,        // full res for display
+        thumb,      // compressed for history strip
+        name: outfit?.name || 'Generated Look',
+        provider: activeProvider,
+        ts: Date.now(),
+      });
+      generationHistory = generationHistory.slice(0, 8);
+      renderHistory();
     });
-    generationHistory = generationHistory.slice(0, 12);
-    renderHistory();
-    scheduleSave();
+    scheduleSave(); // save without history
     showToast('Image generated ✦');
 
   } catch(e) {
@@ -1196,7 +1213,7 @@ function renderHistory() {
   }
   strip.innerHTML = generationHistory.map((h, i) => `
     <div class="history-thumb" onclick="loadHistoryItem(${i})">
-      <img src="${h.src}" alt="">
+      <img src="${h.thumb || h.src}" alt="">
       <div class="history-thumb-meta">
         <div class="history-thumb-name">${esc(h.name)}</div>
         <div class="history-thumb-sub">${providerLabel(h.provider)} · ${new Date(h.ts).toLocaleTimeString()}</div>
