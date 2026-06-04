@@ -99,7 +99,7 @@ app.post('/api/analyze-outfit', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// OPENAI DALL-E 3
+// OPENAI DALL-E 2
 app.post('/api/generate/openai', async (req, res) => {
   const { prompt, size = '1024x1024' } = req.body;
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'No OPENAI_API_KEY' });
@@ -110,7 +110,7 @@ app.post('/api/generate/openai', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
       },
-      body: JSON.stringify({ model: 'dall-e-3', prompt, n: 1, size, quality: 'standard' })
+      body: JSON.stringify({ model: 'dall-e-2', prompt, n: 1, size, quality: 'standard' })
     });
     const data = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'OpenAI error' });
