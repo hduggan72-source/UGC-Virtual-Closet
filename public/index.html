@@ -1109,15 +1109,19 @@ async function generateImage() {
 
   try {
     // For OpenAI gpt-image-1: send avatar and outfit images for true likeness
-    let generatePayload = { prompt };
+    // Set portrait size for full body / editorial shots
+    const isPortrait = activeFraming.includes('full body') || activeFraming.includes('editorial');
+    const size = (activeProvider === 'openai' && isPortrait) ? '1024x1792' : '1024x1024';
+
+    let generatePayload = { prompt, size };
     if (activeProvider === 'openai') {
       if (avatarSrc) {
-        generatePayload.avatarBase64   = avatarSrc.split(',')[1];
+        generatePayload.avatarBase64    = avatarSrc.split(',')[1];
         generatePayload.avatarMediaType = avatarSrc.split(';')[0].split(':')[1] || 'image/jpeg';
       }
       const outfit = outfits.find(o => o.id === selectedId);
       if (outfit) {
-        generatePayload.outfitBase64   = outfit.src.split(',')[1];
+        generatePayload.outfitBase64    = outfit.src.split(',')[1];
         generatePayload.outfitMediaType = outfit.src.split(';')[0].split(':')[1] || 'image/jpeg';
       }
     }
