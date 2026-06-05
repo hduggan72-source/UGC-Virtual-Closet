@@ -1000,10 +1000,30 @@ function onDrop(e) {
 // ════════════════════════════════════════════
 // PLATFORM / PROVIDER
 // ════════════════════════════════════════════
+// Platform → default aspect ratio mapping
+const platformAspect = {
+  'Instagram':  { label: '1:1',  size: '1024x1024' },
+  'Pinterest':  { label: '3:4',  size: '1024x1536' },
+  'TikTok':     { label: '9:16', size: '1024x1792' },
+  'LinkedIn':   { label: '1:1',  size: '1024x1024' },
+  'Twitter/X':  { label: '16:9', size: '1792x1024' },
+};
+
 function selectPlatform(btn, name) {
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
   activePlatform = name;
+
+  // Auto-set aspect ratio for this platform
+  const aspect = platformAspect[name];
+  if (aspect) {
+    activeAspect = aspect;
+    // Update aspect chip UI to reflect new selection
+    document.querySelectorAll('#aspectChips .chip').forEach(c => {
+      c.classList.toggle('active', c.textContent.includes(aspect.label));
+    });
+    showToast(`${name} → ${aspect.label} aspect ratio set`);
+  }
   scheduleSave();
 }
 
