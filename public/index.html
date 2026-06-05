@@ -423,6 +423,17 @@ header h1 { font-family: 'Cormorant Garamond', serif; font-size: 1.7rem; font-we
     </div>
 
     <div>
+      <div class="panel-label" style="margin-bottom:8px">Aspect Ratio</div>
+      <div class="platform-chips" id="aspectChips">
+        <button class="chip active" onclick="selectAspect(this,'1:1','1024x1024')">Square 1:1</button>
+        <button class="chip" onclick="selectAspect(this,'3:4','1024x1536')">Portrait 3:4</button>
+        <button class="chip" onclick="selectAspect(this,'9:16','1024x1792')">Story 9:16</button>
+        <button class="chip" onclick="selectAspect(this,'4:3','1365x1024')">Landscape 4:3</button>
+        <button class="chip" onclick="selectAspect(this,'16:9','1792x1024')">Wide 16:9</button>
+      </div>
+    </div>
+
+    <div>
       <div class="panel-label" style="margin-bottom:9px">Platform</div>
       <div class="platform-chips">
         <button class="chip active" onclick="selectPlatform(this,'Instagram')">Instagram</button>
@@ -625,6 +636,7 @@ let activePlatform = 'Instagram';
 let activeFilter = 'all';
 let activeProvider = 'openai';
 let activeFraming = '3/4 shot, head to mid-thigh';
+let activeAspect = { label: '1:1', size: '1024x1024' };
 let avatarSrc = null;
 let saveTimer = null;
 let currentResultB64 = null;
@@ -801,6 +813,13 @@ function selectFraming(btn, framing) {
   document.querySelectorAll('#framingChips .chip').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
   activeFraming = framing;
+  scheduleSave();
+}
+
+function selectAspect(btn, label, size) {
+  document.querySelectorAll('#aspectChips .chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  activeAspect = { label, size };
   scheduleSave();
 }
 
@@ -1080,7 +1099,7 @@ function buildTemplatePrompt(outfit, avatarDesc, avatarStyle, mood) {
   const outfitDesc = outfit
     ? `wearing ${outfit.name}${outfit.tags ? ', ' + outfit.tags : ''}`
     : 'wearing a curated fashion outfit';
-  const framingNote = `Shot framing: ${activeFraming}.`;
+  const framingNote = `Shot framing: ${activeFraming}. Aspect ratio: ${activeAspect.label}.`;
 
   document.getElementById('promptOutput').value =
     `${subject}${styleNote}, ${outfitDesc}. ${framingNote} ${moodText}. ${platText}. Fashion-forward, high resolution, professional photography, 8k.`;
@@ -1109,9 +1128,8 @@ async function generateImage() {
 
   try {
     // For OpenAI gpt-image-1: send avatar and outfit images for true likeness
-    // Set portrait size for full body / editorial shots
-    const isPortrait = activeFraming.includes('full body') || activeFraming.includes('editorial');
-    const size = (activeProvider === 'openai' && isPortrait) ? '1024x1792' : '1024x1024';
+    // Use user-selected aspect ratio
+    const size = activeAspect.size;
 
     let generatePayload = { prompt, size };
     if (activeProvider === 'openai') {

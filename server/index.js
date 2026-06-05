@@ -204,7 +204,7 @@ app.post('/api/generate/openai', async (req, res) => {
 
 // GROK
 app.post('/api/generate/grok', async (req, res) => {
-  const { prompt } = req.body;
+  const { prompt, size = '1024x1024' } = req.body;
   if (!process.env.GROK_API_KEY) return res.status(503).json({ error: 'No GROK_API_KEY' });
   try {
     const r = await fetch('https://api.x.ai/v1/images/generations', {
@@ -213,7 +213,11 @@ app.post('/api/generate/grok', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.GROK_API_KEY}`,
       },
-      body: JSON.stringify({ model: 'grok-imagine-image', prompt, n: 1 })
+      body: JSON.stringify({ model: 'grok-imagine-image', prompt, n: 1,
+        // Grok supports: 1024x768, 1232x928, 1344x768, 768x1344, 928x1232, 1024x1024
+        // Map to closest supported size
+        ...(size && { size: ['1024x1024','768x1344','1024x1792'].includes(size) ? (size === '1024x1792' ? '768x1344' : size) : '1024x1024' })
+      })
     });
     const data = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Grok error' });
