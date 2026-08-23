@@ -215,7 +215,10 @@ app.post('/api/generate/openai', async (req, res) => {
 // xAI GROK — grok-imagine-image-quality (upgraded tier)
 // ─────────────────────────────────────────────
 app.post('/api/generate/grok', async (req, res) => {
-  const { prompt, size = '1024x1024' } = req.body;
+  // xAI does NOT accept "size" — it rejects the request with a generic 400.
+  // Use aspect_ratio (matches our existing 1:1 / 3:4 / 9:16 / 4:3 / 16:9 labels
+  // directly — all five are natively supported) and resolution instead.
+  const { prompt, aspectRatio = '1:1' } = req.body;
   if (!process.env.GROK_API_KEY) return res.status(503).json({ error: 'No GROK_API_KEY' });
   try {
     const r = await fetch('https://api.x.ai/v1/images/generations', {
@@ -228,7 +231,8 @@ app.post('/api/generate/grok', async (req, res) => {
         model: 'grok-imagine-image-quality',
         prompt,
         n: 1,
-        ...(size && { size: ['1024x1024','768x1344','1024x1792'].includes(size) ? (size === '1024x1792' ? '768x1344' : size) : '1024x1024' })
+        aspect_ratio: aspectRatio,
+        resolution: '2k',
       })
     });
     const data = await r.json();
@@ -250,7 +254,7 @@ app.post('/api/generate/google', async (req, res) => {
   if (!process.env.GOOGLE_API_KEY) return res.status(503).json({ error: 'No GOOGLE_API_KEY' });
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${process.env.GOOGLE_API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`;
 
     const parts = [{ text: prompt }];
     if (avatarBase64) {
@@ -260,9 +264,15 @@ app.post('/api/generate/google', async (req, res) => {
       parts.push({ inlineData: { mimeType: outfitMediaType || 'image/jpeg', data: outfitBase64 } });
     }
 
+    // Key goes in the x-goog-api-key header, not the ?key= query param.
+    // New Google AI Studio keys (AQ. prefix) are rejected by the query-param
+    // path with a misleading "Expected OAuth 2 access token" error.
     const r = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': process.env.GOOGLE_API_KEY,
+      },
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
