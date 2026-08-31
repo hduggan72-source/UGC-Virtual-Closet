@@ -24,7 +24,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// AUTO-NAME OUTFIT (Claude Haiku)
+// AUTO-NAME + CATEGORIZE OUTFIT (Claude Haiku)
 // ─────────────────────────────────────────────
 app.post('/api/name-outfit', async (req, res) => {
   const { imageBase64, mediaType } = req.body;
@@ -39,17 +39,40 @@ app.post('/api/name-outfit', async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 60,
-        system: 'You are a fashion stylist. Respond with ONLY a short outfit name, 3-5 words, title case. Examples: "Ivory Tweed Mini Dress", "Red Power Blouse Combo". No punctuation. No explanation.',
+        max_tokens: 100,
+        system: `You are a fashion stylist categorizing a closet image. Respond with ONLY valid JSON, no other text, in this exact format:
+{"name": "Short Outfit Name", "category": "one-of-the-categories-below"}
+
+Categories (pick the single best match):
+- "full-look" — a complete outfit board with multiple pieces styled together (dress/jumpsuit + shoes + accessories, or full head-to-toe flat lay)
+- "top" — a single top, blouse, shirt, sweater, bodysuit
+- "bottom" — a single skirt, pants, shorts, jeans
+- "dress" — a single dress or jumpsuit shown alone (not styled as a full board)
+- "outerwear" — a jacket, coat, blazer, cardigan
+- "footwear" — shoes, boots, heels, sneakers
+- "hosiery" — tights, stockings, socks
+- "jewelry" — earrings, necklaces, bracelets, rings
+- "bag" — handbags, purses, clutches
+- "accessory" — belts, scarves, hats, sunglasses, other accessories
+
+The name should be 3-5 words, title case, no punctuation at the end.`,
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 } },
-          { type: 'text', text: 'Name this outfit.' }
+          { type: 'text', text: 'Name and categorize this closet image.' }
         ]}]
       })
     });
     const data = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Claude error' });
-    res.json({ name: data.content?.find(b => b.type === 'text')?.text?.trim() || '' });
+    const raw = data.content?.find(b => b.type === 'text')?.text?.trim() || '{}';
+    let parsed;
+    try {
+      const cleaned = raw.replace(/```json\n?|```\n?/g, '').trim();
+      parsed = JSON.parse(cleaned);
+    } catch (e) {
+      parsed = { name: raw.slice(0, 60), category: 'full-look' };
+    }
+    res.json({ name: parsed.name || '', category: parsed.category || 'full-look' });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -80,6 +103,72 @@ app.post('/api/analyze-avatar', async (req, res) => {
     const data = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Claude error' });
     res.json({ descriptor: data.content?.find(b => b.type === 'text')?.text?.trim() || '' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
+// ANALYZE COMBINED LOOK → PROMPT (multiple pieces → one outfit)
+// ─────────────────────────────────────────────
+app.post('/api/analyze-look', async (req, res) => {
+  const { items, avatarDesc, avatarStyle, platform, mood, framing } = req.body;
+  // items: [{ imageBase64, mediaType, category }]
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'No ANTHROPIC_API_KEY' });
+  if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'No items provided' });
+
+  const moodMap = {
+    editorial: 'editorial fashion photography, high-end magazine aesthetic, soft studio lighting',
+    casual:    'candid lifestyle photography, golden hour, natural setting, effortless',
+    luxury:    'luxury fashion campaign, aspirational, dramatic lighting, rich textures',
+    playful:   'bright playful photography, vibrant colors, fun dynamic pose',
+    moody:     'moody atmospheric, dramatic shadows, cinematic color grading',
+    fresh:     'fresh natural light, clean background, soft and airy',
+    streetwear:'urban street style, city backdrop, dynamic pose',
+  };
+  const platformMap = {
+    Instagram:  'square 1:1, bold scroll-stopping composition',
+    Pinterest:  'vertical portrait 2:3, aspirational lifestyle',
+    TikTok:     'vertical 9:16, energetic dynamic pose',
+    LinkedIn:   'professional polished, clean background',
+    'Twitter/X':'high contrast, clear focal point',
+  };
+
+  const subject   = avatarDesc || 'a stylish woman';
+  const styleNote = avatarStyle ? `. Render in ${avatarStyle} style` : '';
+  const moodText  = moodMap[mood] || moodMap.editorial;
+  const platText  = platformMap[platform] || platformMap.Instagram;
+
+  // Build multimodal content: one image per item, each labeled with its category
+  const content = [];
+  items.forEach((item) => {
+    content.push({
+      type: 'image',
+      source: { type: 'base64', media_type: item.mediaType || 'image/jpeg', data: item.imageBase64 }
+    });
+    content.push({ type: 'text', text: `↑ This is the ${item.category || 'item'} piece.` });
+  });
+  content.push({
+    type: 'text',
+    text: `You were just shown ${items.length} separate clothing/accessory pieces (each labeled by category above). Write a single AI image generation prompt showing a woman who looks exactly like this: ${subject}${styleNote}, wearing ALL of these pieces combined together as one cohesive outfit. Describe how the pieces work together (layering order, fit, styling). Shot framing: ${framing || '3/4 shot, head to mid-thigh'}. Mood: ${moodText}. Platform: ${platText}. Include specific details from each piece. End with: high resolution, professional fashion photography, 8k.`
+  });
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 400,
+        system: 'You are a professional fashion stylist and AI image prompt engineer. You combine multiple individual clothing pieces into one cohesive, realistic styled outfit description. Output ONLY the prompt text. Max 180 words.',
+        messages: [{ role: 'user', content }]
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Claude error' });
+    res.json({ prompt: data.content?.find(b => b.type === 'text')?.text?.trim() || '' });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -141,11 +230,13 @@ app.post('/api/analyze-outfit', async (req, res) => {
 // Falls back to /v1/images/generations for text-only prompts
 // ─────────────────────────────────────────────
 app.post('/api/generate/openai', async (req, res) => {
-  const { prompt, avatarBase64, avatarMediaType, outfitBase64, outfitMediaType, size = '1024x1024' } = req.body;
+  const { prompt, avatarBase64, avatarMediaType, outfitBase64, outfitMediaType, itemImages, size = '1024x1024' } = req.body;
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'No OPENAI_API_KEY' });
 
   try {
-    const hasImages = avatarBase64 || outfitBase64;
+    const hasSingleOutfit = !!outfitBase64;
+    const hasMultipleItems = Array.isArray(itemImages) && itemImages.length > 0;
+    const hasImages = avatarBase64 || hasSingleOutfit || hasMultipleItems;
 
     if (hasImages) {
       // Build multipart form manually — no external package needed
@@ -172,7 +263,15 @@ app.post('/api/generate/openai', async (req, res) => {
       addField('quality', 'high');
 
       if (avatarBase64) addFile('image[]', 'avatar.jpg', avatarMediaType || 'image/jpeg', avatarBase64);
-      if (outfitBase64) addFile('image[]', 'outfit.jpg', outfitMediaType || 'image/jpeg', outfitBase64);
+
+      if (hasMultipleItems) {
+        // Mix & match: send each individual piece as its own reference image
+        itemImages.forEach((item, i) => {
+          addFile('image[]', `item${i}.jpg`, item.mediaType || 'image/jpeg', item.imageBase64);
+        });
+      } else if (hasSingleOutfit) {
+        addFile('image[]', 'outfit.jpg', outfitMediaType || 'image/jpeg', outfitBase64);
+      }
 
       parts.push(Buffer.from(`--${boundary}--${CRLF}`));
       const body = Buffer.concat(parts);
@@ -250,7 +349,7 @@ app.post('/api/generate/grok', async (req, res) => {
 // Replaces deprecated Imagen — supports multi-image fusion (avatar + outfit)
 // ─────────────────────────────────────────────
 app.post('/api/generate/google', async (req, res) => {
-  const { prompt, avatarBase64, avatarMediaType, outfitBase64, outfitMediaType, aspectRatio = '1:1' } = req.body;
+  const { prompt, avatarBase64, avatarMediaType, outfitBase64, outfitMediaType, itemImages, aspectRatio = '1:1' } = req.body;
   if (!process.env.GOOGLE_API_KEY) return res.status(503).json({ error: 'No GOOGLE_API_KEY' });
 
   try {
@@ -260,7 +359,12 @@ app.post('/api/generate/google', async (req, res) => {
     if (avatarBase64) {
       parts.push({ inlineData: { mimeType: avatarMediaType || 'image/jpeg', data: avatarBase64 } });
     }
-    if (outfitBase64) {
+    if (Array.isArray(itemImages) && itemImages.length > 0) {
+      // Mix & match: add each individual piece as its own reference image
+      itemImages.forEach((item) => {
+        parts.push({ inlineData: { mimeType: item.mediaType || 'image/jpeg', data: item.imageBase64 } });
+      });
+    } else if (outfitBase64) {
       parts.push({ inlineData: { mimeType: outfitMediaType || 'image/jpeg', data: outfitBase64 } });
     }
 
