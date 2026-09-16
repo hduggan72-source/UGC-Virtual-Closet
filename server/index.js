@@ -137,6 +137,7 @@ app.post('/api/analyze-look', async (req, res) => {
   const moodText  = moodMap[mood] || moodMap.editorial;
   const platText  = platformMap[platform] || platformMap.Instagram;
 
+  // Build multimodal content: one image per item, each labeled with its category
   const content = [];
   items.forEach((item) => {
     content.push({
@@ -269,6 +270,7 @@ app.post('/api/generate/openai', async (req, res) => {
       if (avatarBase64) addFile('image[]', 'avatar.jpg', avatarMediaType || 'image/jpeg', avatarBase64);
 
       if (hasMultipleItems) {
+        // Mix & match: send each individual piece as its own reference image
         itemImages.forEach((item, i) => {
           addFile('image[]', `item${i}.jpg`, item.mediaType || 'image/jpeg', item.imageBase64);
         });
@@ -314,10 +316,12 @@ app.post('/api/generate/openai', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// xAI GROK — grok-imagine-image-quality
-// Uses aspect_ratio + resolution, NOT size (xAI does not accept "size")
+// xAI GROK — grok-imagine-image-quality (upgraded tier)
 // ─────────────────────────────────────────────
 app.post('/api/generate/grok', async (req, res) => {
+  // xAI does NOT accept "size" — it rejects the request with a generic 400.
+  // Use aspect_ratio (matches our existing 1:1 / 3:4 / 9:16 / 4:3 / 16:9 labels
+  // directly — all five are natively supported) and resolution instead.
   const { prompt, aspectRatio = '1:1' } = req.body;
   if (!process.env.GROK_API_KEY) return res.status(503).json({ error: 'No GROK_API_KEY' });
   try {
@@ -347,6 +351,7 @@ app.post('/api/generate/grok', async (req, res) => {
 
 // ─────────────────────────────────────────────
 // GOOGLE GEMINI 2.5 FLASH IMAGE ("Nano Banana")
+// Replaces deprecated Imagen — supports multi-image fusion (avatar + outfit)
 // Key goes in x-goog-api-key HEADER, not ?key= query param
 // ─────────────────────────────────────────────
 app.post('/api/generate/google', async (req, res) => {
@@ -361,6 +366,7 @@ app.post('/api/generate/google', async (req, res) => {
       parts.push({ inlineData: { mimeType: avatarMediaType || 'image/jpeg', data: avatarBase64 } });
     }
     if (Array.isArray(itemImages) && itemImages.length > 0) {
+      // Mix & match: add each individual piece as its own reference image
       itemImages.forEach((item) => {
         parts.push({ inlineData: { mimeType: item.mediaType || 'image/jpeg', data: item.imageBase64 } });
       });
@@ -368,6 +374,9 @@ app.post('/api/generate/google', async (req, res) => {
       parts.push({ inlineData: { mimeType: outfitMediaType || 'image/jpeg', data: outfitBase64 } });
     }
 
+    // Key goes in the x-goog-api-key header, not the ?key= query param.
+    // New Google AI Studio keys (AQ. prefix) are rejected by the query-param
+    // path with a misleading "Expected OAuth 2 access token" error.
     const r = await fetch(url, {
       method: 'POST',
       headers: {

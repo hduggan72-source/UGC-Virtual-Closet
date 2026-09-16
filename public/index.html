@@ -593,6 +593,40 @@ let activeProvider = 'openai';
 let activeFraming = '3/4 shot, head to mid-thigh';
 let activeAspect = { label: '1:1', size: '1024x1024' };
 let avatarSrc = null;
+
+// ── MIX & MATCH STATE ──
+let closetMode = 'single';      // 'single' | 'mix'
+let mixSubMode = 'guided';      // 'guided' | 'free'
+let selectedLookItems = {};     // { categoryKey: outfitId } for guided; also used flat for free mode via lookIds set
+let guidedStepIndex = 0;
+
+const CATEGORY_OPTIONS = [
+  { value: 'full-look', label: 'Full Look' },
+  { value: 'top',       label: 'Top' },
+  { value: 'bottom',    label: 'Bottom' },
+  { value: 'dress',     label: 'Dress/Jumpsuit' },
+  { value: 'outerwear', label: 'Outerwear' },
+  { value: 'footwear',  label: 'Footwear' },
+  { value: 'hosiery',   label: 'Hosiery' },
+  { value: 'jewelry',   label: 'Jewelry' },
+  { value: 'bag',       label: 'Bag' },
+  { value: 'accessory', label: 'Accessory' },
+];
+
+const guidedSteps = [
+  { key: 'top',       label: 'Top',                sub: 'Pick a top, or skip if wearing a dress/jumpsuit.' },
+  { key: 'bottom',    label: 'Bottom',              sub: 'Pick a bottom, or skip if wearing a dress/jumpsuit.' },
+  { key: 'dress',     label: 'Dress / Jumpsuit',    sub: 'Optional — use instead of separate top + bottom.' },
+  { key: 'outerwear', label: 'Outerwear',           sub: 'Jacket, coat, blazer, or cardigan — optional.' },
+  { key: 'footwear',  label: 'Footwear',            sub: 'Shoes, boots, or heels.' },
+  { key: 'hosiery',   label: 'Hosiery',              sub: 'Tights or stockings — optional.' },
+  { key: 'jewelry',   label: 'Jewelry',              sub: 'Earrings, necklaces, bracelets — optional.' },
+  { key: 'bag',       label: 'Bag',                  sub: 'Handbag or purse — optional.' },
+];
+
+function categoryLabel(key) {
+  return (CATEGORY_OPTIONS.find(c => c.value === key) || {}).label || key || 'Full Look';
+}
 let saveTimer = null;
 let currentResultB64 = null;
 let generationHistory = [];
@@ -669,6 +703,7 @@ function loadFromStorage() {
     if (!raw) { renderGrid(); return; }
     const d = JSON.parse(raw);
     outfits = d.outfits || [];
+    // Backward-compat: outfits saved before mix-and-match existed have no category
     outfits.forEach(o => { if (!o.category) o.category = 'full-look'; });
 
     avatarSrc = d.avatarSrc || null;
@@ -692,7 +727,7 @@ function loadFromStorage() {
     document.querySelectorAll('#aspectChips .chip').forEach(c => {
       c.classList.toggle('active', c.textContent.includes(activeAspect.label));
     });
-
+    // Mix & match mode/selections are session-only — always start fresh in Single Outfit mode
     closetMode = 'single';
     mixSubMode = 'guided';
     selectedLookItems = {};
@@ -921,11 +956,12 @@ function handleCardClick(id) {
 
 function getCardSelectedClass(id) {
   if (closetMode === 'single') return selectedId === id ? 'selected' : '';
+  // mix mode: selected if this id is anywhere in selectedLookItems values
   const inLook = Object.values(selectedLookItems).includes(id);
   return inLook ? 'look-selected' : '';
 }
 
-function selectOutfit(id) { handleCardClick(id); }
+function selectOutfit(id) { handleCardClick(id); } // backward-compat alias
 
 // ── MODE SWITCHING ──
 function setClosetMode(btn, mode) {
@@ -988,6 +1024,7 @@ function updateGuidedStepUI() {
 
 // ── FREE MODE ──
 function toggleLookItem(id) {
+  // In free mode, store using the item's own id as both key and value (order doesn't matter)
   const existingKey = Object.keys(selectedLookItems).find(k => selectedLookItems[k] === id);
   if (existingKey) {
     delete selectedLookItems[existingKey];
@@ -1059,6 +1096,7 @@ function renderGrid() {
     const step = guidedSteps[guidedStepIndex];
     list = outfits.filter(o => o.category === step.key);
   }
+  // mix + free mode: show everything, no filtering
 
   document.getElementById('outfitCount').textContent = `${outfits.length} outfit${outfits.length !== 1 ? 's' : ''}`;
 
@@ -1256,6 +1294,7 @@ async function generateImage() {
       }
 
       if (closetMode === 'mix') {
+        // Mix & match: send every selected piece as its own reference image
         const ids = Object.values(selectedLookItems);
         generatePayload.itemImages = ids.map(id => {
           const o = outfits.find(x => x.id === id);
