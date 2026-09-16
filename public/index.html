@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Virtual Closet & Image Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --cream: #f5f0e8; --warm-white: #faf8f4; --ink: #1a1612; --muted: #7a6f63;
+  --accent: #c49a6c; --accent-light: #e8d5b8; --border: #ddd5c5; --selected: #2a1f14;
+  --green: #4a7c59; --red: #c0392b;
+}
+body { font-family: 'Jost', sans-serif; background: var(--cream); color: var(--ink); min-height: 100vh; font-weight: 300; }
+
+header {
+  background: var(--ink); color: var(--cream); padding: 18px 36px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 200; box-shadow: 0 2px 20px rgba(0,0,0,0.3);
+}
+.header-left { display: flex; align-items: baseline; gap: 14px; }
+header h1 { font-family: 'Cormorant Garamond', serif; font-size: 1.7rem; font-weight: 400; }
+.subtitle { font-size: 0.62rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--accent); }
+.save-status { font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.save-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.save-dot.saving { background: var(--accent); animation: blink 1s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.status-bar {
+  background: #1f1a16; color: var(--cream); padding: 10px 36px;
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  border-bottom: 1px solid rgba(196,154,108,0.2); font-size: 0.68rem;
+}
+.provider-status { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.prov-badge { display: flex; align-items: center; gap: 5px; font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.prov-dot { width: 7px; height: 7px; border-radius: 50%; background: #555; }
+.prov-dot.ok { background: var(--green); }
+.spacer { flex: 1; }
+.status-bar a { color: var(--accent); text-decoration: none; font-size: 0.6rem; letter-spacing: 0.1em; }
+
+.app { display: grid; grid-template-columns: 300px 1fr 360px; min-height: calc(100vh - 90px); }
+
+.left-panel {
+  background: var(--warm-white); border-right: 1px solid var(--border);
+  padding: 26px 20px; display: flex; flex-direction: column; gap: 20px;
+  overflow-y: auto; position: sticky; top: 90px; max-height: calc(100vh - 90px);
+}
+.panel-label { font-size: 0.6rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+
+.avatar-zone {
+  border: 1.5px dashed var(--border); border-radius: 4px; aspect-ratio: 3/4;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; position: relative; overflow: hidden;
+  transition: border-color .2s, background .2s; background: var(--cream);
+}
+.avatar-zone:hover { border-color: var(--accent); background: var(--accent-light); }
+.avatar-zone.has-image { border-style: solid; border-color: var(--border); }
+.avatar-zone img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+.avatar-zone input { display: none; }
+.avatar-ph { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); text-align: center; padding: 16px; }
+.avatar-ph svg { width: 36px; opacity: .35; }
+.avatar-ph p { font-size: .72rem; line-height: 1.5; }
+.avatar-overlay {
+  position: absolute; inset: 0; background: rgba(26,22,18,.55);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .2s; color: #fff;
+  font-size: .65rem; letter-spacing: .15em; text-transform: uppercase;
+}
+.avatar-zone.has-image:hover .avatar-overlay { opacity: 1; }
+
+.meta-input {
+  width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--border);
+  padding: 7px 0; font-family: 'Jost', sans-serif; font-size: .8rem; font-weight: 300;
+  color: var(--ink); outline: none; transition: border-color .2s;
+}
+.meta-input:focus { border-color: var(--accent); }
+.meta-input::placeholder { color: var(--muted); }
+
+.platform-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.chip {
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 20px;
+  font-size: .6rem; letter-spacing: .1em; text-transform: uppercase; cursor: pointer;
+  transition: all .15s; background: transparent; color: var(--muted);
+  font-family: 'Jost', sans-serif; font-weight: 400;
+}
+.chip.active { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+.chip:hover:not(.active) { border-color: var(--muted); color: var(--ink); }
+
+.mood-select {
+  background: transparent; border: none; border-bottom: 1px solid var(--border);
+  padding: 7px 0; font-family: 'Jost', sans-serif; font-size: .78rem; font-weight: 300;
+  color: var(--ink); width: 100%; outline: none; cursor: pointer;
+}
+
+.provider-selector { display: flex; flex-direction: column; gap: 8px; }
+.provider-radio {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 3px; cursor: pointer;
+  transition: all .15s; background: var(--cream);
+}
+.provider-radio:hover { border-color: var(--accent); }
+.provider-radio.selected { border-color: var(--ink); background: var(--warm-white); }
+.provider-radio input[type=radio] { accent-color: var(--ink); width: 13px; height: 13px; }
+.provider-radio .prov-name { font-size: .72rem; font-weight: 400; flex: 1; }
+.provider-radio .prov-model { font-size: .6rem; color: var(--muted); letter-spacing: .05em; }
+.provider-radio .prov-avail { font-size: .58rem; color: var(--green); letter-spacing: .05em; }
+.provider-radio .prov-miss { font-size: .58rem; color: var(--muted); letter-spacing: .05em; }
+
+.prompt-text {
+  background: var(--cream); border: 1px solid var(--border); border-radius: 4px;
+  padding: 12px; font-size: .76rem; line-height: 1.75; color: var(--ink);
+  font-family: 'Cormorant Garamond', serif; font-style: italic; min-height: 110px;
+  resize: vertical; font-weight: 300; width: 100%; outline: none; transition: border-color .2s;
+}
+.prompt-text:focus { border-color: var(--accent); }
+.prompt-text::placeholder { color: var(--muted); font-style: italic; }
+
+.ai-loading {
+  background: var(--cream); border: 1px solid var(--accent-light); border-radius: 4px;
+  padding: 16px; display: none; align-items: center; gap: 10px; flex-direction: column;
+}
+.ai-loading.show { display: flex; }
+.spinner { width: 26px; height: 26px; border: 2px solid var(--accent-light); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.ai-loading p { font-size: .7rem; color: var(--muted); letter-spacing: .06em; text-align: center; line-height: 1.5; }
+
+.btn-row { display: flex; gap: 7px; flex-wrap: wrap; }
+.btn {
+  flex: 1; padding: 9px 10px; font-family: 'Jost', sans-serif;
+  font-size: .62rem; letter-spacing: .16em; text-transform: uppercase; font-weight: 400;
+  cursor: pointer; border: 1.5px solid var(--ink); border-radius: 2px;
+  background: transparent; color: var(--ink); transition: all .2s; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { background: var(--ink); color: var(--cream); }
+.btn.primary { background: var(--ink); color: var(--cream); }
+.btn.primary:hover:not(:disabled) { background: var(--selected); }
+.btn.accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn.accent:hover:not(:disabled) { background: #b08050; border-color: #b08050; }
+.btn.success { background: var(--green); border-color: var(--green); color: #fff; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.divider { border: none; border-top: 1px solid var(--border); }
+
+.centre-panel { padding: 28px 36px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+.closet-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.closet-actions { display: flex; gap: 8px; align-items: center; }
+
+.upload-zone {
+  border: 1.5px dashed var(--border); border-radius: 4px; padding: 16px;
+  cursor: pointer; transition: all .2s; background: var(--warm-white);
+  display: flex; align-items: center; gap: 12px;
+}
+.upload-zone:hover { border-color: var(--accent); background: var(--accent-light); }
+.upload-icon { flex-shrink: 0; width: 30px; opacity: .35; }
+.upload-zone p { font-size: .72rem; color: var(--muted); line-height: 1.5; }
+.upload-zone strong { color: var(--ink); font-weight: 400; }
+
+.filter-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.tab {
+  padding: 7px 14px; font-size: .6rem; letter-spacing: .2em; text-transform: uppercase;
+  cursor: pointer; border: none; background: transparent; color: var(--muted);
+  font-family: 'Jost', sans-serif; font-weight: 400;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s;
+}
+.tab.active { color: var(--ink); border-bottom-color: var(--ink); }
+
+.outfit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; }
+.outfit-card {
+  cursor: pointer; border-radius: 4px; overflow: hidden;
+  border: 2px solid transparent; transition: all .2s; background: var(--warm-white);
+  position: relative; animation: fadeIn .3s ease;
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+.outfit-card:hover { border-color: var(--accent-light); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+.outfit-card.selected { border-color: var(--ink); }
+.outfit-card.selected::after {
+  content: '✓'; position: absolute; top: 8px; right: 8px;
+  width: 20px; height: 20px; background: var(--ink); color: var(--cream);
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600;
+}
+.outfit-img-wrap { aspect-ratio: 3/4; overflow: hidden; background: var(--cream); }
+.outfit-img-wrap img { width: 100%; height: 100%; object-fit: cover; transition: transform .4s; }
+.outfit-card:hover .outfit-img-wrap img { transform: scale(1.04); }
+.outfit-card-body { padding: 8px 10px 10px; }
+.outfit-name-input {
+  width: 100%; border: none; background: transparent;
+  font-family: 'Cormorant Garamond', serif; font-size: .9rem; font-weight: 500;
+  color: var(--ink); outline: none; cursor: text; padding: 0; line-height: 1.3;
+}
+.outfit-tags-input {
+  width: 100%; border: none; background: transparent;
+  font-family: 'Jost', sans-serif; font-size: .62rem; letter-spacing: .08em;
+  color: var(--muted); outline: none; padding: 3px 0 0; text-transform: uppercase;
+}
+.card-actions { position: absolute; top: 6px; left: 6px; display: flex; gap: 3px; opacity: 0; transition: opacity .2s; }
+.outfit-card:hover .card-actions { opacity: 1; }
+.card-btn {
+  width: 24px; height: 24px; border-radius: 50%; border: none;
+  background: rgba(250,248,244,.92); color: var(--ink); font-size: 10px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.card-btn.del:hover { background: var(--red); color: #fff; }
+.ai-badge {
+  position: absolute; bottom: 6px; right: 6px; background: var(--ink); color: var(--accent);
+  font-size: .52rem; letter-spacing: .1em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 2px;
+}
+.cat-badge {
+  position: absolute; top: 6px; right: 6px; background: rgba(250,248,244,.92); color: var(--ink);
+  font-size: .5rem; letter-spacing: .08em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 2px; backdrop-filter: blur(4px);
+}
+.outfit-card.look-selected { border-color: var(--accent); }
+.outfit-card.look-selected::after {
+  content: '✓'; position: absolute; top: 8px; left: 8px;
+  width: 20px; height: 20px; background: var(--accent); color: #fff;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600;
+}
+.outfit-category-select {
+  width: 100%; border: none; background: transparent;
+  font-family: 'Jost', sans-serif; font-size: .6rem; letter-spacing: .06em;
+  color: var(--accent); outline: none; padding: 4px 0 0; text-transform: uppercase;
+  cursor: pointer;
+}
+.mode-row { display: flex; flex-direction: column; gap: 8px; }
+.guided-stepper {
+  background: var(--warm-white); border: 1px solid var(--border); border-radius: 4px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.guided-step-label { font-family: 'Cormorant Garamond', serif; font-size: 1rem; font-weight: 500; color: var(--ink); }
+.guided-step-sub { font-size: .65rem; color: var(--muted); letter-spacing: .05em; }
+.look-tray {
+  display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0;
+  min-height: 40px;
+}
+.look-tray-empty { font-size: .68rem; color: var(--muted); padding: 8px 0; }
+.look-tray-item {
+  position: relative; width: 56px; height: 56px; border-radius: 4px; overflow: hidden;
+  border: 1.5px solid var(--border); flex-shrink: 0;
+}
+.look-tray-item img { width: 100%; height: 100%; object-fit: cover; }
+.look-tray-item .remove-btn {
+  position: absolute; top: 1px; right: 1px; width: 16px; height: 16px; border-radius: 50%;
+  background: rgba(26,22,18,.75); color: #fff; border: none; font-size: 9px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.look-tray-item .cat-tag {
+  position: absolute; bottom: 0; left: 0; right: 0; background: rgba(26,22,18,.75); color: var(--accent);
+  font-size: .45rem; text-align: center; letter-spacing: .05em; text-transform: uppercase; padding: 1px 0;
+}
+
+.empty-state { grid-column: 1/-1; text-align: center; padding: 50px 20px; color: var(--muted); }
+.empty-state svg { width: 50px; margin-bottom: 12px; opacity: .2; }
+.empty-state h3 { font-family: 'Cormorant Garamond', serif; font-size: 1.3rem; font-weight: 400; margin-bottom: 6px; color: var(--ink); }
+.empty-state p { font-size: .75rem; line-height: 1.6; }
+
+.storage-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--border); gap: 10px; flex-wrap: wrap; margin-top: auto; }
+.storage-info { font-size: .62rem; color: var(--muted); }
+.storage-actions { display: flex; gap: 6px; }
+.btn-xs {
+  padding: 5px 10px; font-family: 'Jost', sans-serif; font-size: .58rem;
+  letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 2px; background: transparent; color: var(--muted);
+}
+.btn-xs:hover { border-color: var(--ink); color: var(--ink); }
+.btn-xs.danger-xs:hover { border-color: var(--red); color: var(--red); }
+
+.right-panel {
+  background: var(--warm-white); border-left: 1px solid var(--border);
+  padding: 26px 22px; display: flex; flex-direction: column; gap: 20px;
+  overflow-y: auto; position: sticky; top: 90px; max-height: calc(100vh - 90px);
+}
+.result-placeholder { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--muted); gap: 14px; padding: 20px; }
+.result-placeholder svg { width: 52px; opacity: .18; }
+.result-placeholder h3 { font-family: 'Cormorant Garamond', serif; font-size: 1.2rem; font-weight: 400; color: var(--ink); }
+.result-placeholder p { font-size: .72rem; line-height: 1.6; }
+
+.result-panel { display: none; flex-direction: column; gap: 14px; }
+.result-panel.show { display: flex; }
+.result-generating { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 40px 20px; text-align: center; }
+.result-generating.show { display: flex; }
+.big-spinner { width: 48px; height: 48px; border: 3px solid var(--accent-light); border-top-color: var(--accent); border-radius: 50%; animation: spin .9s linear infinite; }
+.result-generating p { font-size: .78rem; color: var(--muted); line-height: 1.6; }
+.result-generating .prov-label { font-size: .62rem; letter-spacing: .15em; text-transform: uppercase; color: var(--accent); }
+
+.result-image-wrap { border-radius: 4px; overflow: hidden; background: var(--cream); border: 1px solid var(--border); position: relative; }
+.result-image-wrap img { width: 100%; display: block; }
+.result-meta { display: flex; flex-direction: column; gap: 6px; }
+.result-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.result-provider-tag { font-size: .58rem; letter-spacing: .12em; text-transform: uppercase; background: var(--ink); color: var(--accent); padding: 3px 8px; border-radius: 2px; }
+.result-timestamp { font-size: .6rem; color: var(--muted); }
+.result-actions { display: flex; flex-direction: column; gap: 7px; }
+
+.history-strip { display: flex; flex-direction: column; gap: 6px; }
+.history-thumb { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px; border-radius: 3px; transition: background .15s; border: 1px solid transparent; }
+.history-thumb:hover { background: var(--cream); border-color: var(--border); }
+.history-thumb img { width: 44px; height: 44px; object-fit: cover; border-radius: 2px; flex-shrink: 0; }
+.history-thumb-meta { flex: 1; min-width: 0; }
+.history-thumb-name { font-size: .68rem; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-thumb-sub { font-size: .58rem; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+
+.toast {
+  position: fixed; bottom: 22px; right: 22px; background: var(--ink); color: var(--cream);
+  padding: 10px 18px; border-radius: 2px; font-size: .7rem; letter-spacing: .08em;
+  opacity: 0; transform: translateY(8px); transition: all .25s; pointer-events: none;
+  z-index: 999; max-width: 300px; line-height: 1.4;
+}
+.toast.show { opacity: 1; transform: none; }
+.toast.err { background: var(--red); }
+.drag-over { border-color: var(--accent) !important; background: var(--accent-light) !important; }
+
+@media (max-width: 1100px) { .app { grid-template-columns: 280px 1fr; } .right-panel { display: none; } }
+@media (max-width: 700px) { .app { grid-template-columns: 1fr; } .left-panel { position: static; max-height: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>Virtual Closet</h1>
+    <span class="subtitle">& Image Studio</span>
+  </div>
+  <div class="save-status">
+    <span class="save-dot" id="saveDot"></span>
+    <span id="saveLabel">Saved</span>
+  </div>
+</header>
+
+<div class="status-bar">
+  <span style="font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)">API Status:</span>
+  <div class="provider-status">
+    <span class="prov-badge"><span class="prov-dot" id="dot-anthropic"></span>Claude</span>
+    <span class="prov-badge"><span class="prov-dot" id="dot-openai"></span>OpenAI</span>
+    <span class="prov-badge"><span class="prov-dot" id="dot-grok"></span>Grok</span>
+    <span class="prov-badge"><span class="prov-dot" id="dot-google"></span>Google</span>
+  </div>
+  <span class="spacer"></span>
+  <a href="#" onclick="checkHealth();return false;">↻ Refresh status</a>
+</div>
+
+<div class="app">
+
+  <div class="left-panel">
+    <div>
+      <div class="panel-label" style="margin-bottom:10px">Your Avatar</div>
+      <div class="avatar-zone" id="avatarZone" onclick="document.getElementById('avatarInput').click()">
+        <input type="file" id="avatarInput" accept="image/*" onchange="loadAvatar(event)">
+        <div class="avatar-ph" id="avatarPh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+          <p>Click to upload<br>avatar photo</p>
+        </div>
+        <div class="avatar-overlay">Change</div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="panel-label">Avatar Descriptor</div>
+        <button class="btn-xs" id="analyzeAvatarBtn" onclick="analyzeAvatar()" title="Let Claude analyze your avatar photo" style="display:none">✦ Auto-analyze</button>
+      </div>
+      <div class="ai-loading" id="avatarAnalyzing" style="padding:10px">
+        <div class="spinner"></div>
+        <p style="font-size:.65rem">Claude reading your avatar…</p>
+      </div>
+      <textarea class="meta-input" id="avatarDesc" placeholder="Upload avatar photo — Claude will auto-generate a descriptor you can edit…" oninput="scheduleSave()" rows="4" style="resize:vertical;min-height:80px;font-family:inherit;line-height:1.5"></textarea>
+      <input class="meta-input" id="avatarStyle" placeholder="Visual style (e.g. photorealistic)" oninput="scheduleSave()">
+    </div>
+
+    <div>
+      <div class="panel-label" style="margin-bottom:8px">Shot Framing</div>
+      <div class="platform-chips" id="framingChips">
+        <button class="chip" onclick="selectFraming(this,'full body, head to toe, feet visible')">Full Body</button>
+        <button class="chip active" onclick="selectFraming(this,'3/4 shot, head to mid-thigh')">3/4 Shot</button>
+        <button class="chip" onclick="selectFraming(this,'portrait, head and shoulders')">Portrait</button>
+        <button class="chip" onclick="selectFraming(this,'editorial full-page, dynamic pose')">Editorial</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel-label" style="margin-bottom:8px">Aspect Ratio</div>
+      <div class="platform-chips" id="aspectChips">
+        <button class="chip active" onclick="selectAspect(this,'1:1','1024x1024')">Square 1:1</button>
+        <button class="chip" onclick="selectAspect(this,'3:4','1024x1536')">Portrait 3:4</button>
+        <button class="chip" onclick="selectAspect(this,'9:16','1024x1792')">Story 9:16</button>
+        <button class="chip" onclick="selectAspect(this,'4:3','1365x1024')">Landscape 4:3</button>
+        <button class="chip" onclick="selectAspect(this,'16:9','1792x1024')">Wide 16:9</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel-label" style="margin-bottom:9px">Platform</div>
+      <div class="platform-chips">
+        <button class="chip active" onclick="selectPlatform(this,'Instagram')">Instagram</button>
+        <button class="chip" onclick="selectPlatform(this,'Pinterest')">Pinterest</button>
+        <button class="chip" onclick="selectPlatform(this,'TikTok')">TikTok</button>
+        <button class="chip" onclick="selectPlatform(this,'LinkedIn')">LinkedIn</button>
+        <button class="chip" onclick="selectPlatform(this,'Twitter/X')">X</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel-label" style="margin-bottom:7px">Mood / Vibe</div>
+      <select class="mood-select" id="moodSelect" onchange="scheduleSave()">
+        <option value="editorial">Editorial & Polished</option>
+        <option value="casual">Casual & Effortless</option>
+        <option value="luxury">Luxury & Aspirational</option>
+        <option value="playful">Playful & Fun</option>
+        <option value="moody">Moody & Dramatic</option>
+        <option value="fresh">Fresh & Natural</option>
+        <option value="streetwear">Street Style</option>
+      </select>
+    </div>
+
+    <hr class="divider">
+
+    <div>
+      <div class="panel-label" style="margin-bottom:9px">Image Generator</div>
+      <div class="provider-selector" id="providerSelector">
+        <label class="provider-radio selected" id="prov-openai">
+          <input type="radio" name="imgprov" value="openai" checked onchange="selectProvider('openai')">
+          <span>
+            <div class="prov-name">OpenAI GPT-Image-2.5 Flare</div>
+            <div class="prov-model">gpt-image-2.5-flare · avatar + outfit vision</div>
+          </span>
+          <span class="prov-avail" id="pavail-openai">—</span>
+        </label>
+        <label class="provider-radio" id="prov-google">
+          <input type="radio" name="imgprov" value="google" onchange="selectProvider('google')">
+          <span>
+            <div class="prov-name">Google Nano Banana</div>
+            <div class="prov-model">gemini-2.5-flash-image</div>
+          </span>
+          <span class="prov-avail" id="pavail-google">—</span>
+        </label>
+        <label class="provider-radio" id="prov-grok">
+          <input type="radio" name="imgprov" value="grok" onchange="selectProvider('grok')">
+          <span>
+            <div class="prov-name">xAI Grok Quality</div>
+            <div class="prov-model">grok-imagine-image-quality</div>
+          </span>
+          <span class="prov-avail" id="pavail-grok">—</span>
+        </label>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div class="panel-label">Prompt</div>
+      <div class="ai-loading" id="aiLoading">
+        <div class="spinner"></div>
+        <p>Claude analyzing outfit…</p>
+      </div>
+      <textarea class="prompt-text" id="promptOutput" placeholder="Select an outfit → Generate Prompt, or write your own…"></textarea>
+      <div class="btn-row">
+        <button class="btn primary" id="analyzeBtn" onclick="analyzeOutfit()" title="Use Claude to read the outfit image and write a prompt">✦ Build Prompt</button>
+        <button class="btn" onclick="randomizeOutfit()">⟳ Random</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn accent" id="generateBtn" onclick="generateImage()" title="Send prompt to image generator">▶ Generate Image</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="copyBtn" onclick="copyPrompt()">Copy Prompt</button>
+        <button class="btn" onclick="clearAll_prompt()">Clear</button>
+      </div>
+      <button class="btn" id="chatgptBtn" onclick="openInChatGPT()" style="width:100%;border-color:var(--accent);color:var(--accent);font-size:.6rem;letter-spacing:.12em">
+        ↗ Open in ChatGPT
+      </button>
+    </div>
+  </div>
+
+  <div class="centre-panel">
+    <div class="closet-header">
+      <div>
+        <div class="panel-label" style="margin-bottom:3px">Your Closet</div>
+        <p style="font-size:.72rem;color:var(--muted)" id="outfitCount">0 outfits</p>
+      </div>
+      <div class="closet-actions">
+        <button class="btn" style="flex:none;padding:9px 16px" onclick="document.getElementById('outfitInput').click()">+ Add Outfits</button>
+        <input type="file" id="outfitInput" accept="image/*" multiple style="display:none" onchange="loadOutfits(event)">
+      </div>
+    </div>
+
+    <div class="mode-row">
+      <div class="panel-label" style="margin-bottom:2px">Closet Mode</div>
+      <div class="platform-chips" id="closetModeChips">
+        <button class="chip active" onclick="setClosetMode(this,'single')">Single Outfit</button>
+        <button class="chip" onclick="setClosetMode(this,'mix')">✦ Mix &amp; Match</button>
+      </div>
+    </div>
+
+    <div id="mixMatchPanel" style="display:none; flex-direction:column; gap:12px">
+      <div class="platform-chips" id="mixSubModeChips">
+        <button class="chip active" onclick="setMixSubMode(this,'guided')">Guided</button>
+        <button class="chip" onclick="setMixSubMode(this,'free')">Free Select</button>
+      </div>
+
+      <div class="guided-stepper" id="guidedStepper">
+        <div class="guided-step-label" id="guidedStepLabel">Step 1 of 8 — Top</div>
+        <div class="guided-step-sub" id="guidedStepSub">Pick a top below, or skip this piece.</div>
+        <div class="btn-row">
+          <button class="btn-xs" onclick="guidedPrev()">← Back</button>
+          <button class="btn-xs" onclick="guidedSkip()">Skip →</button>
+          <button class="btn-xs" onclick="guidedNext()" id="guidedNextBtn" style="display:none">Next →</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel-label" style="margin-bottom:6px">Current Look <span id="lookCount" style="color:var(--muted);text-transform:none;letter-spacing:0;font-weight:400">(0 pieces)</span></div>
+        <div class="look-tray" id="lookTray"><div class="look-tray-empty">No pieces selected yet — click items below to add them.</div></div>
+      </div>
+    </div>
+
+    <div class="filter-tabs" id="filterTabsRow">
+      <button class="tab active" onclick="filterOutfits(this,'all')">All</button>
+      <button class="tab" onclick="filterOutfits(this,'casual')">Casual</button>
+      <button class="tab" onclick="filterOutfits(this,'formal')">Formal</button>
+      <button class="tab" onclick="filterOutfits(this,'holiday')">Holiday</button>
+      <button class="tab" onclick="filterOutfits(this,'chic')">Chic</button>
+    </div>
+
+    <label class="upload-zone" id="dropZone" for="outfitInput"
+      ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+      <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12M8 8l4-4 4 4"/>
+      </svg>
+      <p><strong>Drop outfit images here</strong><br>or click · JPG PNG WEBP</p>
+    </label>
+
+    <div class="outfit-grid" id="outfitGrid"></div>
+
+    <div class="storage-bar">
+      <div class="storage-info" id="storageInfo">Loading…</div>
+      <div class="storage-actions">
+        <button class="btn-xs" onclick="exportCloset()">Export</button>
+        <button class="btn-xs" onclick="document.getElementById('importInput').click()">Import</button>
+        <input type="file" id="importInput" accept=".json" style="display:none" onchange="importCloset(event)">
+        <button class="btn-xs danger-xs" onclick="clearCloset()">Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="panel-label">Generated Image</div>
+    <div class="result-placeholder" id="resultPlaceholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+      </svg>
+      <h3>No image yet</h3>
+      <p>Select an outfit, build a prompt,<br>then hit Generate Image.</p>
+    </div>
+    <div class="result-generating" id="resultGenerating">
+      <div class="big-spinner"></div>
+      <div class="prov-label" id="generatingLabel">Generating…</div>
+      <p>This takes 10–30 seconds.<br>Hang tight.</p>
+    </div>
+    <div class="result-panel" id="resultPanel">
+      <div class="result-meta">
+        <div class="result-meta-row">
+          <span class="result-provider-tag" id="resultProvTag">—</span>
+          <span class="result-timestamp" id="resultTimestamp">—</span>
+        </div>
+      </div>
+      <div class="result-image-wrap" id="resultImageWrap">
+        <img id="resultImg" src="" alt="Generated">
+      </div>
+      <div class="result-actions">
+        <button class="btn accent" onclick="saveToCloset()">＋ Save to Closet</button>
+        <button class="btn" onclick="downloadResult()">↓ Download Image</button>
+        <button class="btn" onclick="generateImage()">↺ Regenerate</button>
+      </div>
+      <hr class="divider">
+      <div>
+        <div class="panel-label" style="margin-bottom:8px">History</div>
+        <div class="history-strip" id="historyStrip"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let outfits = [];
+let selectedId = null;
+let activePlatform = 'Instagram';
+let activeFilter = 'all';
+let activeProvider = 'openai';
+let activeFraming = '3/4 shot, head to mid-thigh';
+let activeAspect = { label: '1:1', size: '1024x1024' };
+let avatarSrc = null;
+let saveTimer = null;
+let currentResultB64 = null;
+let generationHistory = [];
+let serverProviders = {};
+
+// ── MIX & MATCH STATE ──
+let closetMode = 'single';      // 'single' | 'mix'
+let mixSubMode = 'guided';      // 'guided' | 'free'
+let selectedLookItems = {};     // { categoryKey: outfitId } for guided; free mode uses 'free_<id>' keys
+let guidedStepIndex = 0;
+
+const CATEGORY_OPTIONS = [
+  { value: 'full-look', label: 'Full Look' },
+  { value: 'top',       label: 'Top' },
+  { value: 'bottom',    label: 'Bottom' },
+  { value: 'dress',     label: 'Dress/Jumpsuit' },
+  { value: 'outerwear', label: 'Outerwear' },
+  { value: 'footwear',  label: 'Footwear' },
+  { value: 'hosiery',   label: 'Hosiery' },
+  { value: 'jewelry',   label: 'Jewelry' },
+  { value: 'bag',       label: 'Bag' },
+  { value: 'accessory', label: 'Accessory' },
+];
+
+const guidedSteps = [
+  { key: 'top',       label: 'Top',                sub: 'Pick a top, or skip if wearing a dress/jumpsuit.' },
+  { key: 'bottom',    label: 'Bottom',              sub: 'Pick a bottom, or skip if wearing a dress/jumpsuit.' },
+  { key: 'dress',     label: 'Dress / Jumpsuit',    sub: 'Optional — use instead of separate top + bottom.' },
+  { key: 'outerwear', label: 'Outerwear',           sub: 'Jacket, coat, blazer, or cardigan — optional.' },
+  { key: 'footwear',  label: 'Footwear',            sub: 'Shoes, boots, or heels.' },
+  { key: 'hosiery',   label: 'Hosiery',             sub: 'Tights or stockings — optional.' },
+  { key: 'jewelry',   label: 'Jewelry',             sub: 'Earrings, necklaces, bracelets — optional.' },
+  { key: 'bag',       label: 'Bag',                 sub: 'Handbag or purse — optional.' },
+];
+
+function categoryLabel(key) {
+  return (CATEGORY_OPTIONS.find(c => c.value === key) || {}).label || key || 'Full Look';
+}
+
+const STORAGE_KEY = 'vc_v4';
+
+async function init() {
+  loadFromStorage();
+  renderGrid();
+  updateStorageInfo();
+  await checkHealth();
+}
+
+async function checkHealth() {
+  try {
+    const r = await fetch('/api/health');
+    const data = await r.json();
+    serverProviders = data.providers || {};
+    updateProviderUI();
+  } catch(e) { console.warn('Health check failed', e); }
+}
+
+function updateProviderUI() {
+  for (const key of ['anthropic','openai','grok','google']) {
+    const dot = document.getElementById(`dot-${key}`);
+    if (dot) dot.className = 'prov-dot ' + (serverProviders[key] ? 'ok' : '');
+  }
+  for (const prov of ['openai','grok','google']) {
+    const el = document.getElementById(`pavail-${prov}`);
+    if (!el) continue;
+    el.textContent = serverProviders[prov] ? '✓ Ready' : 'No key';
+    el.className = serverProviders[prov] ? 'prov-avail' : 'prov-miss';
+  }
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) { renderGrid(); return; }
+    const d = JSON.parse(raw);
+    outfits = d.outfits || [];
+    outfits.forEach(o => { if (!o.category) o.category = 'full-look'; });
+
+    avatarSrc = d.avatarSrc || null;
+    activePlatform = d.activePlatform || 'Instagram';
+    activeFraming = d.framing || '3/4 shot, head to mid-thigh';
+    activeAspect = d.aspect || { label: '1:1', size: '1024x1024' };
+
+    document.getElementById('avatarDesc').value  = d.avatarDesc  || '';
+    document.getElementById('avatarStyle').value = d.avatarStyle || '';
+    document.getElementById('moodSelect').value  = d.mood        || 'editorial';
+
+    if (avatarSrc) {
+      setAvatarImage(avatarSrc);
+      document.getElementById('analyzeAvatarBtn').style.display = 'inline-block';
+    }
+    document.querySelectorAll('.platform-chips .chip').forEach(c => {
+      if (c.closest('#framingChips') || c.closest('#aspectChips') ||
+          c.closest('#closetModeChips') || c.closest('#mixSubModeChips')) return;
+      c.classList.toggle('active', c.textContent.trim() === activePlatform);
+    });
+    document.querySelectorAll('#aspectChips .chip').forEach(c => {
+      c.classList.toggle('active', c.textContent.includes(activeAspect.label));
+    });
+
+    closetMode = 'single';
+    mixSubMode = 'guided';
+    selectedLookItems = {};
+    guidedStepIndex = 0;
+
+    generationHistory = [];
+    renderHistory();
+    updateSaveStatus('saved');
+  } catch(e) { console.warn('Load error', e); }
+}
+
+function scheduleSave() {
+  updateSaveStatus('saving');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveAll, 900);
+}
+
+function saveAll() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      outfits, avatarSrc,
+      avatarDesc:  document.getElementById('avatarDesc').value,
+      avatarStyle: document.getElementById('avatarStyle').value,
+      activePlatform,
+      mood: document.getElementById('moodSelect').value,
+      framing: activeFraming,
+      aspect: activeAspect,
+    }));
+    updateSaveStatus('saved');
+    updateStorageInfo();
+  } catch(e) {
+    if (e.name === 'QuotaExceededError') showToast('Storage full — export a backup and remove some outfits.', true);
+  }
+}
+
+function updateSaveStatus(state) {
+  document.getElementById('saveDot').className = state === 'saving' ? 'save-dot saving' : 'save-dot';
+  document.getElementById('saveLabel').textContent = state === 'saving' ? 'Saving…' : 'Saved';
+}
+
+function updateStorageInfo() {
+  try {
+    const kb = ((localStorage.getItem(STORAGE_KEY) || '').length * 2 / 1024).toFixed(0);
+    document.getElementById('storageInfo').textContent = `${outfits.length} outfit${outfits.length !== 1 ? 's' : ''} · ~${kb} KB stored`;
+  } catch(e) {}
+}
+
+function loadAvatar(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  toBase64(file, src => {
+    avatarSrc = src;
+    setAvatarImage(src);
+    scheduleSave();
+    document.getElementById('analyzeAvatarBtn').style.display = 'inline-block';
+    if (serverProviders.anthropic) analyzeAvatar();
+  });
+}
+
+function setAvatarImage(src) {
+  const zone = document.getElementById('avatarZone');
+  let img = zone.querySelector('img');
+  if (!img) { img = document.createElement('img'); zone.prepend(img); }
+  img.src = src;
+  document.getElementById('avatarPh').style.display = 'none';
+  zone.classList.add('has-image');
+}
+
+async function analyzeAvatar() {
+  if (!avatarSrc) return;
+  const btn = document.getElementById('analyzeAvatarBtn');
+  const loading = document.getElementById('avatarAnalyzing');
+  btn.disabled = true;
+  loading.classList.add('show');
+  try {
+    const base64 = avatarSrc.split(',')[1];
+    const mediaType = avatarSrc.split(';')[0].split(':')[1] || 'image/jpeg';
+    const r = await fetch('/api/analyze-avatar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64, mediaType })
+    });
+    const data = await r.json();
+    if (data.descriptor) {
+      document.getElementById('avatarDesc').value = data.descriptor;
+      scheduleSave();
+      showToast('Avatar analyzed ✦ Descriptor ready — edit as needed');
+    }
+  } catch(e) { showToast('Avatar analysis failed — enter description manually', true); }
+  finally { btn.disabled = false; loading.classList.remove('show'); }
+}
+
+function selectFraming(btn, framing) {
+  document.querySelectorAll('#framingChips .chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  activeFraming = framing;
+  scheduleSave();
+}
+
+function selectAspect(btn, label, size) {
+  document.querySelectorAll('#aspectChips .chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  activeAspect = { label, size };
+  scheduleSave();
+}
+
+const platformAspect = {
+  'Instagram':  { label: '1:1',  size: '1024x1024' },
+  'Pinterest':  { label: '3:4',  size: '1024x1536' },
+  'TikTok':     { label: '9:16', size: '1024x1792' },
+  'LinkedIn':   { label: '1:1',  size: '1024x1024' },
+  'Twitter/X':  { label: '16:9', size: '1792x1024' },
+};
+
+function selectPlatform(btn, name) {
+  document.querySelectorAll('.left-panel > div > .platform-chips .chip').forEach(c => {
+    if (c.closest('#framingChips') || c.closest('#aspectChips')) return;
+    c.classList.remove('active');
+  });
+  btn.classList.add('active');
+  activePlatform = name;
+  const aspect = platformAspect[name];
+  if (aspect) {
+    activeAspect = aspect;
+    document.querySelectorAll('#aspectChips .chip').forEach(c => {
+      c.classList.toggle('active', c.textContent.includes(aspect.label));
+    });
+    showToast(`${name} → ${aspect.label} aspect ratio set`);
+  }
+  scheduleSave();
+}
+
+function loadOutfits(e) {
+  Array.from(e.target.files).forEach(f => addOutfitFile(f));
+  e.target.value = '';
+}
+
+function addOutfitFile(file) {
+  compressImage(file, 800, 0.72, async (src) => {
+    const id = Date.now() + '_' + Math.random().toString(36).slice(2);
+    outfits.push({ id, src, name: '✦ Naming…', tags: '', category: 'full-look', aiAnalyzed: false });
+    renderGrid();
+    scheduleSave();
+
+    if (serverProviders.anthropic) {
+      try {
+        const base64 = src.split(',')[1];
+        const mediaType = src.split(';')[0].split(':')[1] || 'image/jpeg';
+        const r = await fetch('/api/name-outfit', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: base64, mediaType })
+        });
+        const data = await r.json();
+        const o = outfits.find(x => x.id === id);
+        if (o) {
+          if (data.name) o.name = data.name;
+          if (data.category) o.category = data.category;
+          renderGrid(); scheduleSave();
+        }
+      } catch(e) {
+        const o = outfits.find(x => x.id === id);
+        if (o && o.name === '✦ Naming…') { o.name = 'Outfit ' + outfits.length; renderGrid(); }
+      }
+    } else {
+      const o = outfits.find(x => x.id === id);
+      if (o) { o.name = 'Outfit ' + outfits.length; renderGrid(); scheduleSave(); }
+    }
+  });
+}
+
+function compressImage(file, maxWidth, quality, cb) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      cb(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function compressDataUrl(dataUrl, maxWidth, quality, cb) {
+  const img = new Image();
+  img.onload = () => {
+    const scale = Math.min(1, maxWidth / img.width);
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    cb(canvas.toDataURL('image/jpeg', quality));
+  };
+  img.src = dataUrl;
+}
+
+function toBase64(file, cb) {
+  const r = new FileReader();
+  r.onload = e => cb(e.target.result);
+  r.readAsDataURL(file);
+}
+
+function deleteOutfit(id) {
+  outfits = outfits.filter(o => o.id !== id);
+  if (selectedId === id) selectedId = null;
+  renderGrid();
+  scheduleSave();
+}
+
+// ── SELECTION: routes clicks based on current closet mode ──
+function handleCardClick(id) {
+  if (closetMode === 'single') {
+    selectedId = selectedId === id ? null : id;
+    renderGrid();
+  } else if (closetMode === 'mix' && mixSubMode === 'guided') {
+    pickForGuidedStep(id);
+  } else if (closetMode === 'mix' && mixSubMode === 'free') {
+    toggleLookItem(id);
+  }
+}
+
+function getCardSelectedClass(id) {
+  if (closetMode === 'single') return selectedId === id ? 'selected' : '';
+  const inLook = Object.values(selectedLookItems).includes(id);
+  return inLook ? 'look-selected' : '';
+}
+
+function selectOutfit(id) { handleCardClick(id); }
+
+// ── MODE SWITCHING ──
+function setClosetMode(btn, mode) {
+  document.querySelectorAll('#closetModeChips .chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  closetMode = mode;
+
+  document.getElementById('mixMatchPanel').style.display = mode === 'mix' ? 'flex' : 'none';
+  document.getElementById('filterTabsRow').style.display = mode === 'mix' ? 'none' : 'flex';
+
+  if (mode === 'mix') {
+    updateGuidedStepUI();
+    renderLookTray();
+  }
+  renderGrid();
+}
+
+function setMixSubMode(btn, mode) {
+  document.querySelectorAll('#mixSubModeChips .chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  mixSubMode = mode;
+  document.getElementById('guidedStepper').style.display = mode === 'guided' ? 'flex' : 'none';
+  renderGrid();
+}
+
+// ── GUIDED MODE ──
+function pickForGuidedStep(id) {
+  const step = guidedSteps[guidedStepIndex];
+  selectedLookItems[step.key] = id;
+  renderLookTray();
+  guidedNext();
+}
+
+function guidedNext() {
+  if (guidedStepIndex < guidedSteps.length - 1) {
+    guidedStepIndex++;
+    updateGuidedStepUI();
+    renderGrid();
+  }
+}
+function guidedPrev() {
+  if (guidedStepIndex > 0) {
+    guidedStepIndex--;
+    updateGuidedStepUI();
+    renderGrid();
+  }
+}
+function guidedSkip() {
+  const step = guidedSteps[guidedStepIndex];
+  delete selectedLookItems[step.key];
+  renderLookTray();
+  guidedNext();
+}
+
+function updateGuidedStepUI() {
+  const step = guidedSteps[guidedStepIndex];
+  document.getElementById('guidedStepLabel').textContent = `Step ${guidedStepIndex + 1} of ${guidedSteps.length} — ${step.label}`;
+  document.getElementById('guidedStepSub').textContent = step.sub;
+}
+
+// ── FREE MODE ──
+function toggleLookItem(id) {
+  const existingKey = Object.keys(selectedLookItems).find(k => selectedLookItems[k] === id);
+  if (existingKey) {
+    delete selectedLookItems[existingKey];
+  } else {
+    selectedLookItems['free_' + id] = id;
+  }
+  renderLookTray();
+  renderGrid();
+}
+
+function removeFromLook(id) {
+  const key = Object.keys(selectedLookItems).find(k => selectedLookItems[k] === id);
+  if (key) delete selectedLookItems[key];
+  renderLookTray();
+  renderGrid();
+}
+
+function clearLook() {
+  selectedLookItems = {};
+  renderLookTray();
+  renderGrid();
+}
+
+function renderLookTray() {
+  const tray = document.getElementById('lookTray');
+  const countEl = document.getElementById('lookCount');
+  const ids = Object.values(selectedLookItems);
+  countEl.textContent = `(${ids.length} piece${ids.length !== 1 ? 's' : ''})`;
+
+  if (!ids.length) {
+    tray.innerHTML = `<div class="look-tray-empty">No pieces selected yet — click items below to add them.</div>`;
+    return;
+  }
+  tray.innerHTML = ids.map(id => {
+    const o = outfits.find(x => x.id === id);
+    if (!o) return '';
+    return `<div class="look-tray-item" title="${esc(o.name)}">
+      <img src="${o.src}" alt="${esc(o.name)}">
+      <div class="cat-tag">${categoryLabel(o.category)}</div>
+      <button class="remove-btn" onclick="removeFromLook('${id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function updateOutfit(id, key, val) {
+  const o = outfits.find(x => x.id === id);
+  if (o) {
+    o[key] = val;
+    scheduleSave();
+    if (key === 'category') renderGrid();
+  }
+}
+
+function filterOutfits(btn, tag) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  activeFilter = tag;
+  renderGrid();
+}
+
+function renderGrid() {
+  const grid = document.getElementById('outfitGrid');
+  let list = outfits;
+
+  if (closetMode === 'single') {
+    list = activeFilter === 'all' ? outfits : outfits.filter(o =>
+      o.tags.toLowerCase().includes(activeFilter) || o.name.toLowerCase().includes(activeFilter));
+  } else if (closetMode === 'mix' && mixSubMode === 'guided') {
+    const step = guidedSteps[guidedStepIndex];
+    list = outfits.filter(o => o.category === step.key);
+  }
+
+  document.getElementById('outfitCount').textContent = `${outfits.length} outfit${outfits.length !== 1 ? 's' : ''}`;
+
+  if (!outfits.length) {
+    grid.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+        <path d="M20.38 3.46 16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.57a1 1 0 00.99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.57a2 2 0 00-1.34-2.23z"/>
+      </svg>
+      <h3>Your closet is empty</h3><p>Drop outfit style boards here to get started.</p>
+    </div>`;
+    return;
+  }
+  if (!list.length) {
+    const msg = (closetMode === 'mix' && mixSubMode === 'guided')
+      ? `No items tagged "${categoryLabel(guidedSteps[guidedStepIndex].key)}" yet. Upload one, tag an existing item, or hit Skip.`
+      : 'Try a different filter.';
+    grid.innerHTML = `<div class="empty-state"><h3>No matches</h3><p>${msg}</p></div>`;
+    return;
+  }
+
+  grid.innerHTML = list.map(o => `
+    <div class="outfit-card ${getCardSelectedClass(o.id)}" onclick="handleCardClick('${o.id}')">
+      <div class="card-actions">
+        <button class="card-btn del" onclick="event.stopPropagation();deleteOutfit('${o.id}')">✕</button>
+      </div>
+      <div class="outfit-img-wrap"><img src="${o.src}" alt="${esc(o.name)}" loading="lazy"></div>
+      ${o.aiAnalyzed ? '<div class="ai-badge">AI ✦</div>' : ''}
+      ${closetMode === 'mix' ? `<div class="cat-badge">${categoryLabel(o.category)}</div>` : ''}
+      <div class="outfit-card-body">
+        <input class="outfit-name-input" value="${esc(o.name)}" placeholder="Outfit name"
+          onclick="event.stopPropagation()" onchange="updateOutfit('${o.id}','name',this.value)">
+        <select class="outfit-category-select" onclick="event.stopPropagation()" onchange="updateOutfit('${o.id}','category',this.value)">
+          ${CATEGORY_OPTIONS.map(c => `<option value="${c.value}" ${o.category === c.value ? 'selected' : ''}>${c.label}</option>`).join('')}
+        </select>
+        <input class="outfit-tags-input" value="${esc(o.tags)}" placeholder="casual, chic…"
+          onclick="event.stopPropagation()" onchange="updateOutfit('${o.id}','tags',this.value)">
+      </div>
+    </div>`).join('');
+}
+
+function onDragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag-over'); }
+function onDragLeave() { document.getElementById('dropZone').classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault(); onDragLeave();
+  Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(addOutfitFile);
+}
+
+function selectProvider(name) {
+  activeProvider = name;
+  document.querySelectorAll('.provider-radio').forEach(el => el.classList.toggle('selected', el.id === `prov-${name}`));
+}
+
+async function analyzeOutfit() {
+  if (closetMode === 'mix') { return analyzeLook(); }
+
+  const outfit = outfits.find(o => o.id === selectedId);
+  const avatarDesc  = document.getElementById('avatarDesc').value.trim();
+  const avatarStyle = document.getElementById('avatarStyle').value.trim();
+  const mood = document.getElementById('moodSelect').value;
+
+  if (!outfit) { buildTemplatePrompt(null, avatarDesc, avatarStyle, mood); showToast('No outfit selected — using template prompt.'); return; }
+  if (!serverProviders.anthropic) { buildTemplatePrompt(outfit, avatarDesc, avatarStyle, mood); showToast('ANTHROPIC_API_KEY not set — using template prompt.'); return; }
+
+  document.getElementById('aiLoading').classList.add('show');
+  document.getElementById('analyzeBtn').disabled = true;
+  document.getElementById('promptOutput').style.opacity = '0.4';
+
+  try {
+    const base64 = outfit.src.split(',')[1];
+    const mediaType = outfit.src.split(';')[0].split(':')[1] || 'image/jpeg';
+    const r = await fetch('/api/analyze-outfit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64, mediaType, avatarDesc, avatarStyle, platform: activePlatform, mood, framing: activeFraming })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Server error');
+    document.getElementById('promptOutput').value = data.prompt;
+    const o = outfits.find(x => x.id === outfit.id);
+    if (o) o.aiAnalyzed = true;
+    renderGrid(); scheduleSave();
+    showToast('Claude analyzed your outfit ✦ Prompt ready');
+  } catch(e) {
+    buildTemplatePrompt(outfit, avatarDesc, avatarStyle, mood);
+    showToast(`AI error: ${e.message}. Using template.`, true);
+  } finally {
+    document.getElementById('aiLoading').classList.remove('show');
+    document.getElementById('analyzeBtn').disabled = false;
+    document.getElementById('promptOutput').style.opacity = '1';
+  }
+}
+
+async function analyzeLook() {
+  const ids = Object.values(selectedLookItems);
+  const avatarDesc  = document.getElementById('avatarDesc').value.trim();
+  const avatarStyle = document.getElementById('avatarStyle').value.trim();
+  const mood = document.getElementById('moodSelect').value;
+
+  if (!ids.length) { showToast('Add at least one piece to your look first', true); return; }
+
+  const items = ids.map(id => {
+    const o = outfits.find(x => x.id === id);
+    if (!o) return null;
+    return {
+      imageBase64: o.src.split(',')[1],
+      mediaType: o.src.split(';')[0].split(':')[1] || 'image/jpeg',
+      category: categoryLabel(o.category),
+    };
+  }).filter(Boolean);
+
+  if (!serverProviders.anthropic) {
+    buildLookTemplatePrompt(ids, avatarDesc, avatarStyle, mood);
+    showToast('ANTHROPIC_API_KEY not set — using template prompt.');
+    return;
+  }
+
+  document.getElementById('aiLoading').classList.add('show');
+  document.getElementById('analyzeBtn').disabled = true;
+  document.getElementById('promptOutput').style.opacity = '0.4';
+
+  try {
+    const r = await fetch('/api/analyze-look', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, avatarDesc, avatarStyle, platform: activePlatform, mood, framing: activeFraming })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Server error');
+    document.getElementById('promptOutput').value = data.prompt;
+    showToast(`Claude combined ${items.length} pieces into one look ✦`);
+  } catch(e) {
+    buildLookTemplatePrompt(ids, avatarDesc, avatarStyle, mood);
+    showToast(`AI error: ${e.message}. Using template.`, true);
+  } finally {
+    document.getElementById('aiLoading').classList.remove('show');
+    document.getElementById('analyzeBtn').disabled = false;
+    document.getElementById('promptOutput').style.opacity = '1';
+  }
+}
+
+function buildLookTemplatePrompt(ids, avatarDesc, avatarStyle, mood) {
+  const subject   = avatarDesc ? `A woman who looks exactly like this: ${avatarDesc}` : 'a stylish woman';
+  const styleNote = avatarStyle ? `. Render in ${avatarStyle} style` : '';
+  const moodText  = moodMap[mood] || moodMap.editorial;
+  const platText  = platformMap[activePlatform] || '';
+  const pieces = ids.map(id => {
+    const o = outfits.find(x => x.id === id);
+    return o ? `${categoryLabel(o.category)}: ${o.name}` : '';
+  }).filter(Boolean).join('; ');
+  const framingNote = `Shot framing: ${activeFraming}. Aspect ratio: ${activeAspect.label}.`;
+  document.getElementById('promptOutput').value = `${subject}${styleNote}, wearing a combined outfit made of these pieces — ${pieces}. ${framingNote} ${moodText}. ${platText}. Fashion-forward, high resolution, professional photography, 8k.`;
+}
+
+const moodMap = {
+  editorial: 'editorial fashion photography, high-end magazine aesthetic, soft studio lighting',
+  casual:    'candid lifestyle photography, golden hour, natural setting, effortless',
+  luxury:    'luxury fashion campaign, aspirational, dramatic lighting, rich textures',
+  playful:   'bright playful photography, vibrant colors, fun dynamic pose',
+  moody:     'moody atmospheric, dramatic shadows, cinematic color grading',
+  fresh:     'fresh natural light, clean background, soft and airy',
+  streetwear:'urban street style, city backdrop, dynamic pose',
+};
+const platformMap = {
+  Instagram: 'square 1:1, bold scroll-stopping composition', Pinterest: 'vertical portrait 2:3, aspirational lifestyle',
+  TikTok: 'vertical 9:16, energetic dynamic pose', LinkedIn: 'professional polished, clean background', 'Twitter/X':'high contrast, clear focal point',
+};
+
+function buildTemplatePrompt(outfit, avatarDesc, avatarStyle, mood) {
+  const subject   = avatarDesc ? `A woman who looks exactly like this: ${avatarDesc}` : 'a stylish woman';
+  const styleNote = avatarStyle ? `. Render in ${avatarStyle} style` : '';
+  const moodText  = moodMap[mood] || moodMap.editorial;
+  const platText  = platformMap[activePlatform] || '';
+  const outfitDesc = outfit ? `wearing ${outfit.name}${outfit.tags ? ', ' + outfit.tags : ''}` : 'wearing a curated fashion outfit';
+  const framingNote = `Shot framing: ${activeFraming}. Aspect ratio: ${activeAspect.label}.`;
+  document.getElementById('promptOutput').value = `${subject}${styleNote}, ${outfitDesc}. ${framingNote} ${moodText}. ${platText}. Fashion-forward, high resolution, professional photography, 8k.`;
+}
+
+async function generateImage() {
+  const prompt = document.getElementById('promptOutput').value.trim();
+  if (!prompt) { showToast('Build a prompt first — click ✦ Build Prompt', true); return; }
+  if (!serverProviders[activeProvider]) { showToast(`${activeProvider.toUpperCase()}_API_KEY not set on server.`, true); return; }
+
+  document.getElementById('resultPlaceholder').style.display = 'none';
+  document.getElementById('resultPanel').classList.remove('show');
+  document.getElementById('resultGenerating').classList.add('show');
+  document.getElementById('generatingLabel').textContent = `Generating with ${providerLabel(activeProvider)}…`;
+  document.getElementById('generateBtn').disabled = true;
+
+  try {
+    const size = activeAspect.size;
+    let generatePayload = { prompt, size, aspectRatio: activeAspect.label };
+
+    if (activeProvider === 'openai' || activeProvider === 'google') {
+      if (avatarSrc) {
+        generatePayload.avatarBase64    = avatarSrc.split(',')[1];
+        generatePayload.avatarMediaType = avatarSrc.split(';')[0].split(':')[1] || 'image/jpeg';
+      }
+
+      if (closetMode === 'mix') {
+        const ids = Object.values(selectedLookItems);
+        generatePayload.itemImages = ids.map(id => {
+          const o = outfits.find(x => x.id === id);
+          if (!o) return null;
+          return {
+            imageBase64: o.src.split(',')[1],
+            mediaType: o.src.split(';')[0].split(':')[1] || 'image/jpeg',
+          };
+        }).filter(Boolean);
+      } else {
+        const outfit = outfits.find(o => o.id === selectedId);
+        if (outfit) {
+          generatePayload.outfitBase64    = outfit.src.split(',')[1];
+          generatePayload.outfitMediaType = outfit.src.split(';')[0].split(':')[1] || 'image/jpeg';
+        }
+      }
+    }
+
+    const r = await fetch(`/api/generate/${activeProvider}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(generatePayload)
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Generation failed');
+
+    currentResultB64 = data.imageBase64;
+    const src = `data:image/png;base64,${currentResultB64}`;
+
+    document.getElementById('resultImg').src = src;
+    document.getElementById('resultProvTag').textContent = providerLabel(activeProvider);
+    document.getElementById('resultTimestamp').textContent = new Date().toLocaleTimeString();
+
+    document.getElementById('resultGenerating').classList.remove('show');
+    document.getElementById('resultPanel').classList.add('show');
+
+    const outfit = outfits.find(o => o.id === selectedId);
+    const lookPieceCount = Object.values(selectedLookItems).length;
+    const historyName = closetMode === 'mix'
+      ? `Mixed Look (${lookPieceCount} piece${lookPieceCount !== 1 ? 's' : ''})`
+      : (outfit?.name || 'Generated Look');
+    compressDataUrl(src, 300, 0.7, (thumb) => {
+      generationHistory.unshift({ src, thumb, name: historyName, provider: activeProvider, ts: Date.now() });
+      generationHistory = generationHistory.slice(0, 8);
+      renderHistory();
+    });
+    showToast('Image generated ✦');
+  } catch(e) {
+    document.getElementById('resultGenerating').classList.remove('show');
+    document.getElementById('resultPlaceholder').style.display = 'flex';
+    showToast(`Generation failed: ${e.message}`, true);
+  } finally {
+    document.getElementById('generateBtn').disabled = false;
+  }
+}
+
+function providerLabel(p) { return { openai:'GPT-Image-2.5 Flare', grok:'Grok Quality', google:'Nano Banana' }[p] || p; }
+
+function saveToCloset() {
+  if (!currentResultB64) return;
+  const src = `data:image/png;base64,${currentResultB64}`;
+  const outfit = outfits.find(o => o.id === selectedId);
+  const lookPieceCount = Object.values(selectedLookItems).length;
+  const name = closetMode === 'mix'
+    ? `Mixed Look (${lookPieceCount} piece${lookPieceCount !== 1 ? 's' : ''}) — AI`
+    : (outfit?.name || 'Generated Look') + ' — AI';
+  outfits.push({ id: 'gen_' + Date.now(), src, name, tags: 'ai-generated', category: 'full-look', aiAnalyzed: false });
+  renderGrid(); scheduleSave();
+  showToast('Saved to your closet ✦');
+}
+
+function downloadResult() {
+  if (!currentResultB64) return;
+  const a = document.createElement('a');
+  a.href = `data:image/png;base64,${currentResultB64}`;
+  a.download = `virtual-closet-${Date.now()}.png`;
+  a.click();
+}
+
+function renderHistory() {
+  const strip = document.getElementById('historyStrip');
+  if (!generationHistory.length) { strip.innerHTML = `<p style="font-size:.68rem;color:var(--muted)">No generations yet.</p>`; return; }
+  strip.innerHTML = generationHistory.map((h, i) => `
+    <div class="history-thumb" onclick="loadHistoryItem(${i})">
+      <img src="${h.thumb || h.src}" alt="">
+      <div class="history-thumb-meta">
+        <div class="history-thumb-name">${esc(h.name)}</div>
+        <div class="history-thumb-sub">${providerLabel(h.provider)} · ${new Date(h.ts).toLocaleTimeString()}</div>
+      </div>
+    </div>`).join('');
+}
+
+function loadHistoryItem(i) {
+  const h = generationHistory[i];
+  if (!h) return;
+  currentResultB64 = h.src.split(',')[1];
+  document.getElementById('resultImg').src = h.src;
+  document.getElementById('resultProvTag').textContent = providerLabel(h.provider);
+  document.getElementById('resultTimestamp').textContent = new Date(h.ts).toLocaleTimeString();
+  document.getElementById('resultPlaceholder').style.display = 'none';
+  document.getElementById('resultGenerating').classList.remove('show');
+  document.getElementById('resultPanel').classList.add('show');
+}
+
+function randomizeOutfit() {
+  if (closetMode === 'mix') { showToast('Random works in Single Outfit mode — switch modes or build your look manually.'); return; }
+  if (!outfits.length) { showToast('Add some outfits first'); return; }
+  const pool = outfits.filter(o => o.id !== selectedId);
+  const pick = (pool.length ? pool : outfits)[Math.floor(Math.random() * (pool.length || outfits.length))];
+  selectedId = pick.id;
+  renderGrid();
+  analyzeOutfit();
+}
+
+function copyPrompt() {
+  const text = document.getElementById('promptOutput').value;
+  if (!text) { showToast('Nothing to copy'); return; }
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = '✓ Copied';
+    btn.classList.add('success');
+    setTimeout(() => { btn.textContent = 'Copy Prompt'; btn.classList.remove('success'); }, 2000);
+  });
+}
+
+function clearAll_prompt() {
+  document.getElementById('promptOutput').value = '';
+  selectedId = null;
+  renderGrid();
+}
+
+async function openInChatGPT() {
+  const prompt = document.getElementById('promptOutput').value;
+  if (!prompt) { showToast('Build a prompt first'); return; }
+  const outfit = outfits.find(o => o.id === selectedId);
+  const outfitName = outfit ? outfit.name : '';
+
+  const instructions = [
+    'Generate a fashion image using the attached reference photos.', '',
+    'AVATAR REFERENCE: The first image is my avatar — match her face, hair, skin tone, and body type closely.',
+    outfitName ? 'OUTFIT REFERENCE: The second image is the outfit flat lay — recreate it exactly as worn.' : '',
+    '', 'PROMPT:', prompt
+  ].filter(Boolean).join('\n');
+
+  await navigator.clipboard.writeText(instructions);
+
+  const modalEl = document.createElement('div');
+  modalEl.style.cssText = 'position:fixed;inset:0;background:rgba(26,22,18,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modalEl.innerHTML = `
+    <div style="background:var(--warm-white);border-radius:6px;padding:32px;max-width:460px;width:100%;font-family:Jost,sans-serif">
+      <div style="font-size:.6rem;letter-spacing:.25em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">Open in ChatGPT</div>
+      <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;margin-bottom:16px">3 steps for best results</h3>
+      <ol style="font-size:.8rem;line-height:2.2;color:var(--muted);padding-left:18px;margin-bottom:20px">
+        <li>ChatGPT is opening in a new tab</li>
+        <li>Upload your <strong style="color:var(--ink)">avatar photo</strong>${outfitName ? ' + <strong style="color:var(--ink)">' + outfitName + '</strong> outfit image' : ''} as attachments</li>
+        <li>Paste (<strong style="color:var(--ink)">Ctrl+V / Cmd+V</strong>) — prompt already copied!</li>
+      </ol>
+      <div style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:12px;font-size:.7rem;font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--muted);margin-bottom:20px;max-height:120px;overflow-y:auto;line-height:1.6;white-space:pre-wrap">${instructions}</div>
+      <div style="display:flex;gap:8px">
+        <button id="modalClose" style="flex:1;padding:10px;font-family:Jost,sans-serif;font-size:.63rem;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;border:1.5px solid var(--border);border-radius:2px;background:transparent;color:var(--muted)">Close</button>
+        <button id="modalCopy" style="flex:1;padding:10px;font-family:Jost,sans-serif;font-size:.63rem;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;border:1.5px solid var(--ink);border-radius:2px;background:var(--ink);color:var(--cream)">Copy Prompt Only</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modalEl);
+  modalEl.querySelector('#modalClose').onclick = () => modalEl.remove();
+  modalEl.querySelector('#modalCopy').onclick = function() {
+    navigator.clipboard.writeText(prompt).then(() => { this.textContent = 'Copied!'; });
+  };
+  modalEl.addEventListener('click', e => { if (e.target === modalEl) modalEl.remove(); });
+  window.open('https://chatgpt.com', '_blank');
+  showToast('ChatGPT opened — paste prompt and attach your photos');
+}
+
+function exportCloset() {
+  const blob = new Blob([JSON.stringify({ outfits, exportedAt: new Date().toISOString() }, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `closet-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  showToast('Exported ✓');
+}
+
+function importCloset(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      const d = JSON.parse(ev.target.result);
+      if (d.outfits) {
+        d.outfits.forEach(o => { if (!o.category) o.category = 'full-look'; });
+        outfits = [...outfits, ...d.outfits];
+        renderGrid(); scheduleSave(); showToast(`Imported ${d.outfits.length} outfits`);
+      }
+    } catch { showToast('Could not parse file', true); }
+  };
+  r.readAsText(file);
+  e.target.value = '';
+}
+
+function clearCloset() {
+  if (!confirm('Clear ALL outfits? This cannot be undone.')) return;
+  outfits = []; selectedId = null; currentResultB64 = null;
+  selectedLookItems = {};
+  renderGrid();
+  localStorage.removeItem(STORAGE_KEY);
+  updateStorageInfo();
+  showToast('Closet cleared');
+}
+
+let toastTimer;
+function showToast(msg, isErr = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+init();
+</script>
+</body>
+</html>
