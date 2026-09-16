@@ -6,7 +6,7 @@ const path = require('path');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '25mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 const PORT = process.env.PORT || 3000;
@@ -23,7 +23,9 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// AUTO-NAME OUTFIT
+// ─────────────────────────────────────────────
+// AUTO-NAME + CATEGORIZE OUTFIT (Claude Haiku)
+// ─────────────────────────────────────────────
 app.post('/api/name-outfit', async (req, res) => {
   const { imageBase64, mediaType } = req.body;
   if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'No ANTHROPIC_API_KEY' });
@@ -37,21 +39,46 @@ app.post('/api/name-outfit', async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 60,
-        system: 'You are a fashion stylist. Respond with ONLY a short outfit name, 3-5 words, title case. Examples: "Ivory Tweed Mini Dress", "Red Power Blouse Combo". No punctuation. No explanation.',
+        max_tokens: 100,
+        system: `You are a fashion stylist categorizing a closet image. Respond with ONLY valid JSON, no other text, in this exact format:
+{"name": "Short Outfit Name", "category": "one-of-the-categories-below"}
+
+Categories (pick the single best match):
+- "full-look" — a complete outfit board with multiple pieces styled together (dress/jumpsuit + shoes + accessories, or full head-to-toe flat lay)
+- "top" — a single top, blouse, shirt, sweater, bodysuit
+- "bottom" — a single skirt, pants, shorts, jeans
+- "dress" — a single dress or jumpsuit shown alone (not styled as a full board)
+- "outerwear" — a jacket, coat, blazer, cardigan
+- "footwear" — shoes, boots, heels, sneakers
+- "hosiery" — tights, stockings, socks
+- "jewelry" — earrings, necklaces, bracelets, rings
+- "bag" — handbags, purses, clutches
+- "accessory" — belts, scarves, hats, sunglasses, other accessories
+
+The name should be 3-5 words, title case, no punctuation at the end.`,
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 } },
-          { type: 'text', text: 'Name this outfit.' }
+          { type: 'text', text: 'Name and categorize this closet image.' }
         ]}]
       })
     });
     const data = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Claude error' });
-    res.json({ name: data.content?.find(b => b.type === 'text')?.text?.trim() || '' });
+    const raw = data.content?.find(b => b.type === 'text')?.text?.trim() || '{}';
+    let parsed;
+    try {
+      const cleaned = raw.replace(/```json\n?|```\n?/g, '').trim();
+      parsed = JSON.parse(cleaned);
+    } catch (e) {
+      parsed = { name: raw.slice(0, 60), category: 'full-look' };
+    }
+    res.json({ name: parsed.name || '', category: parsed.category || 'full-look' });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ANALYZE AVATAR → DETAILED DESCRIPTOR
+// ─────────────────────────────────────────────
+// ANALYZE AVATAR → DETAILED DESCRIPTOR (Claude Sonnet)
+// ─────────────────────────────────────────────
 app.post('/api/analyze-avatar', async (req, res) => {
   const { imageBase64, mediaType } = req.body;
   if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'No ANTHROPIC_API_KEY' });
@@ -79,10 +106,15 @@ app.post('/api/analyze-avatar', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ANALYZE OUTFIT → PROMPT
-app.post('/api/analyze-outfit', async (req, res) => {
-  const { imageBase64, mediaType, avatarDesc, avatarStyle, platform, mood, framing } = req.body;
+// ─────────────────────────────────────────────
+// ANALYZE COMBINED LOOK → PROMPT (multiple pieces → one outfit)
+// ─────────────────────────────────────────────
+app.post('/api/analyze-look', async (req, res) => {
+  const { items, avatarDesc, avatarStyle, platform, mood, framing } = req.body;
+  // items: [{ imageBase64, mediaType, category }]
   if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'No ANTHROPIC_API_KEY' });
+  if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'No items provided' });
+
   const moodMap = {
     editorial: 'editorial fashion photography, high-end magazine aesthetic, soft studio lighting',
     casual:    'candid lifestyle photography, golden hour, natural setting, effortless',
@@ -93,16 +125,81 @@ app.post('/api/analyze-outfit', async (req, res) => {
     streetwear:'urban street style, city backdrop, dynamic pose',
   };
   const platformMap = {
-    Instagram: 'square 1:1, bold scroll-stopping composition',
-    Pinterest: 'vertical portrait 2:3, aspirational lifestyle',
-    TikTok:    'vertical 9:16, energetic dynamic pose',
-    LinkedIn:  'professional polished, clean background',
+    Instagram:  'square 1:1, bold scroll-stopping composition',
+    Pinterest:  'vertical portrait 2:3, aspirational lifestyle',
+    TikTok:     'vertical 9:16, energetic dynamic pose',
+    LinkedIn:   'professional polished, clean background',
     'Twitter/X':'high contrast, clear focal point',
   };
+
   const subject   = avatarDesc || 'a stylish woman';
   const styleNote = avatarStyle ? `. Render in ${avatarStyle} style` : '';
   const moodText  = moodMap[mood] || moodMap.editorial;
   const platText  = platformMap[platform] || platformMap.Instagram;
+
+  const content = [];
+  items.forEach((item) => {
+    content.push({
+      type: 'image',
+      source: { type: 'base64', media_type: item.mediaType || 'image/jpeg', data: item.imageBase64 }
+    });
+    content.push({ type: 'text', text: `↑ This is the ${item.category || 'item'} piece.` });
+  });
+  content.push({
+    type: 'text',
+    text: `You were just shown ${items.length} separate clothing/accessory pieces (each labeled by category above). Write a single AI image generation prompt showing a woman who looks exactly like this: ${subject}${styleNote}, wearing ALL of these pieces combined together as one cohesive outfit. Describe how the pieces work together (layering order, fit, styling). Shot framing: ${framing || '3/4 shot, head to mid-thigh'}. Mood: ${moodText}. Platform: ${platText}. Include specific details from each piece. End with: high resolution, professional fashion photography, 8k.`
+  });
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 400,
+        system: 'You are a professional fashion stylist and AI image prompt engineer. You combine multiple individual clothing pieces into one cohesive, realistic styled outfit description. Output ONLY the prompt text. Max 180 words.',
+        messages: [{ role: 'user', content }]
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Claude error' });
+    res.json({ prompt: data.content?.find(b => b.type === 'text')?.text?.trim() || '' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
+// ANALYZE OUTFIT → PROMPT (Claude Sonnet)
+// ─────────────────────────────────────────────
+app.post('/api/analyze-outfit', async (req, res) => {
+  const { imageBase64, mediaType, avatarDesc, avatarStyle, platform, mood, framing } = req.body;
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'No ANTHROPIC_API_KEY' });
+
+  const moodMap = {
+    editorial: 'editorial fashion photography, high-end magazine aesthetic, soft studio lighting',
+    casual:    'candid lifestyle photography, golden hour, natural setting, effortless',
+    luxury:    'luxury fashion campaign, aspirational, dramatic lighting, rich textures',
+    playful:   'bright playful photography, vibrant colors, fun dynamic pose',
+    moody:     'moody atmospheric, dramatic shadows, cinematic color grading',
+    fresh:     'fresh natural light, clean background, soft and airy',
+    streetwear:'urban street style, city backdrop, dynamic pose',
+  };
+  const platformMap = {
+    Instagram:  'square 1:1, bold scroll-stopping composition',
+    Pinterest:  'vertical portrait 2:3, aspirational lifestyle',
+    TikTok:     'vertical 9:16, energetic dynamic pose',
+    LinkedIn:   'professional polished, clean background',
+    'Twitter/X':'high contrast, clear focal point',
+  };
+
+  const subject   = avatarDesc || 'a stylish woman';
+  const styleNote = avatarStyle ? `. Render in ${avatarStyle} style` : '';
+  const moodText  = moodMap[mood] || moodMap.editorial;
+  const platText  = platformMap[platform] || platformMap.Instagram;
+
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -117,7 +214,10 @@ app.post('/api/analyze-outfit', async (req, res) => {
         system: 'You are a professional fashion stylist and AI image prompt engineer. Analyze outfit images and write precise vivid image generation prompts. Output ONLY the prompt text. Max 150 words.',
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 } },
-          { type: 'text', text: `Write an AI image generation prompt showing a woman who looks exactly like this: ${subject}${styleNote}, wearing this exact outfit. Shot framing: ${framing || '3/4 shot, head to mid-thigh'}. Mood: ${moodText}. Platform: ${platText}. Include specific outfit details visible in the image. The subject's physical appearance must match the descriptor closely. End with: high resolution, professional fashion photography, 8k.` }
+          {
+            type: 'text',
+            text: `Write an AI image generation prompt showing a woman who looks exactly like this: ${subject}${styleNote}, wearing this exact outfit. Shot framing: ${framing || '3/4 shot, head to mid-thigh'}. Mood: ${moodText}. Platform: ${platText}. Include specific outfit details visible in the image. The subject's physical appearance must match the descriptor closely. End with: high resolution, professional fashion photography, 8k.`
+          }
         ]}]
       })
     });
@@ -127,13 +227,20 @@ app.post('/api/analyze-outfit', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// OPENAI GPT-IMAGE-1 (multimodal — sends avatar + outfit as reference images)
+// ─────────────────────────────────────────────
+// OPENAI GPT-IMAGE-2.5 FLARE (fast, high-quality; supports up to 16 reference images)
+// Falls back to /v1/images/generations for text-only prompts
+// ─────────────────────────────────────────────
 app.post('/api/generate/openai', async (req, res) => {
-  const { prompt, avatarBase64, avatarMediaType, outfitBase64, outfitMediaType, size = '1024x1024' } = req.body;
+  const { prompt, avatarBase64, avatarMediaType, outfitBase64, outfitMediaType, itemImages, size = '1024x1024' } = req.body;
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'No OPENAI_API_KEY' });
 
+  const MODEL = 'gpt-image-2.5-flare-2026-09-08'; // pinned dated snapshot
+
   try {
-    const hasImages = avatarBase64 || outfitBase64;
+    const hasSingleOutfit = !!outfitBase64;
+    const hasMultipleItems = Array.isArray(itemImages) && itemImages.length > 0;
+    const hasImages = avatarBase64 || hasSingleOutfit || hasMultipleItems;
 
     if (hasImages) {
       // Build multipart form manually — no external package needed
@@ -146,7 +253,6 @@ app.post('/api/generate/openai', async (req, res) => {
           `--${boundary}${CRLF}Content-Disposition: form-data; name="${name}"${CRLF}${CRLF}${value}${CRLF}`
         ));
       };
-
       const addFile = (name, filename, mime, b64data) => {
         const header = `--${boundary}${CRLF}Content-Disposition: form-data; name="${name}"; filename="${filename}"${CRLF}Content-Type: ${mime}${CRLF}${CRLF}`;
         parts.push(Buffer.from(header));
@@ -154,14 +260,21 @@ app.post('/api/generate/openai', async (req, res) => {
         parts.push(Buffer.from(CRLF));
       };
 
-      addField('model', 'gpt-image-1');
+      addField('model', MODEL);
       addField('prompt', prompt);
       addField('n', '1');
       addField('size', size);
       addField('quality', 'high');
 
       if (avatarBase64) addFile('image[]', 'avatar.jpg', avatarMediaType || 'image/jpeg', avatarBase64);
-      if (outfitBase64) addFile('image[]', 'outfit.jpg', outfitMediaType || 'image/jpeg', outfitBase64);
+
+      if (hasMultipleItems) {
+        itemImages.forEach((item, i) => {
+          addFile('image[]', `item${i}.jpg`, item.mediaType || 'image/jpeg', item.imageBase64);
+        });
+      } else if (hasSingleOutfit) {
+        addFile('image[]', 'outfit.jpg', outfitMediaType || 'image/jpeg', outfitBase64);
+      }
 
       parts.push(Buffer.from(`--${boundary}--${CRLF}`));
       const body = Buffer.concat(parts);
@@ -183,14 +296,13 @@ app.post('/api/generate/openai', async (req, res) => {
       return res.json({ imageBase64: b64 });
 
     } else {
-      // Plain text generation fallback (no images)
       const r = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         },
-        body: JSON.stringify({ model: 'gpt-image-1', prompt, n: 1, size, quality: 'high' })
+        body: JSON.stringify({ model: MODEL, prompt, n: 1, size, quality: 'high' })
       });
       const data = await r.json();
       if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'OpenAI error' });
@@ -198,13 +310,15 @@ app.post('/api/generate/openai', async (req, res) => {
       if (!b64) return res.status(500).json({ error: 'No image returned from OpenAI' });
       return res.json({ imageBase64: b64 });
     }
-
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// GROK
+// ─────────────────────────────────────────────
+// xAI GROK — grok-imagine-image-quality
+// Uses aspect_ratio + resolution, NOT size (xAI does not accept "size")
+// ─────────────────────────────────────────────
 app.post('/api/generate/grok', async (req, res) => {
-  const { prompt, size = '1024x1024' } = req.body;
+  const { prompt, aspectRatio = '1:1' } = req.body;
   if (!process.env.GROK_API_KEY) return res.status(503).json({ error: 'No GROK_API_KEY' });
   try {
     const r = await fetch('https://api.x.ai/v1/images/generations', {
@@ -213,10 +327,12 @@ app.post('/api/generate/grok', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.GROK_API_KEY}`,
       },
-      body: JSON.stringify({ model: 'grok-imagine-image', prompt, n: 1,
-        // Grok supports: 1024x768, 1232x928, 1344x768, 768x1344, 928x1232, 1024x1024
-        // Map to closest supported size
-        ...(size && { size: ['1024x1024','768x1344','1024x1792'].includes(size) ? (size === '1024x1792' ? '768x1344' : size) : '1024x1024' })
+      body: JSON.stringify({
+        model: 'grok-imagine-image-quality',
+        prompt,
+        n: 1,
+        aspect_ratio: aspectRatio,
+        resolution: '2k',
       })
     });
     const data = await r.json();
@@ -229,24 +345,51 @@ app.post('/api/generate/grok', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// GOOGLE IMAGEN
+// ─────────────────────────────────────────────
+// GOOGLE GEMINI 2.5 FLASH IMAGE ("Nano Banana")
+// Key goes in x-goog-api-key HEADER, not ?key= query param
+// ─────────────────────────────────────────────
 app.post('/api/generate/google', async (req, res) => {
-  const { prompt } = req.body;
+  const { prompt, avatarBase64, avatarMediaType, outfitBase64, outfitMediaType, itemImages, aspectRatio = '1:1' } = req.body;
   if (!process.env.GOOGLE_API_KEY) return res.status(503).json({ error: 'No GOOGLE_API_KEY' });
+
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${process.env.GOOGLE_API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`;
+
+    const parts = [{ text: prompt }];
+    if (avatarBase64) {
+      parts.push({ inlineData: { mimeType: avatarMediaType || 'image/jpeg', data: avatarBase64 } });
+    }
+    if (Array.isArray(itemImages) && itemImages.length > 0) {
+      itemImages.forEach((item) => {
+        parts.push({ inlineData: { mimeType: item.mediaType || 'image/jpeg', data: item.imageBase64 } });
+      });
+    } else if (outfitBase64) {
+      parts.push({ inlineData: { mimeType: outfitMediaType || 'image/jpeg', data: outfitBase64 } });
+    }
+
     const r = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': process.env.GOOGLE_API_KEY,
+      },
       body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: { sampleCount: 1, aspectRatio: '1:1', safetyFilterLevel: 'block_few', personGeneration: 'allow_adult' }
+        contents: [{ parts }],
+        generationConfig: {
+          responseModalities: ['IMAGE'],
+          imageConfig: { aspectRatio },
+        }
       })
     });
+
     const data = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Google error' });
-    const b64 = data.predictions?.[0]?.bytesBase64Encoded;
-    if (!b64) return res.status(500).json({ error: 'No image from Google' });
+    if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Google Gemini error' });
+
+    const imgPart = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+    const b64 = imgPart?.inlineData?.data;
+    if (!b64) return res.status(500).json({ error: 'No image returned from Gemini' });
+
     res.json({ imageBase64: b64 });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
