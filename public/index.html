@@ -68,6 +68,8 @@ header h1 { font-family: 'Cormorant Garamond', serif; font-size: 1.7rem; font-we
   font-size: .65rem; letter-spacing: .15em; text-transform: uppercase;
 }
 .avatar-zone.has-image:hover .avatar-overlay { opacity: 1; }
+.avatar-zone.drag-over .avatar-overlay { opacity: 1; background: rgba(196,154,108,.6); }
+.avatar-zone.drag-over { border-style: solid; border-width: 2px; }
 
 .meta-input {
   width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--border);
@@ -345,13 +347,14 @@ header h1 { font-family: 'Cormorant Garamond', serif; font-size: 1.7rem; font-we
   <div class="left-panel">
     <div>
       <div class="panel-label" style="margin-bottom:10px">Your Avatar</div>
-      <div class="avatar-zone" id="avatarZone" onclick="document.getElementById('avatarInput').click()">
+      <div class="avatar-zone" id="avatarZone" onclick="document.getElementById('avatarInput').click()"
+        ondragover="avatarDragOver(event)" ondragleave="avatarDragLeave(event)" ondrop="avatarDrop(event)">
         <input type="file" id="avatarInput" accept="image/*" onchange="loadAvatar(event)">
         <div class="avatar-ph" id="avatarPh">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
           </svg>
-          <p>Click to upload<br>avatar photo</p>
+          <p>Drop or click to upload<br>avatar photo</p>
         </div>
         <div class="avatar-overlay">Change</div>
       </div>
@@ -742,7 +745,15 @@ function updateStorageInfo() {
 
 function loadAvatar(e) {
   const file = e.target.files[0];
-  if (!file) return;
+  if (file) handleAvatarFile(file);
+  e.target.value = '';
+}
+
+function handleAvatarFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    showToast('Please drop an image file (JPG, PNG, WEBP)', true);
+    return;
+  }
   toBase64(file, src => {
     avatarSrc = src;
     setAvatarImage(src);
@@ -752,10 +763,30 @@ function loadAvatar(e) {
   });
 }
 
+// ── AVATAR DRAG & DROP ──
+function avatarDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  document.getElementById('avatarZone').classList.add('drag-over');
+}
+function avatarDragLeave(e) {
+  const zone = document.getElementById('avatarZone');
+  // Ignore dragleave events fired when moving over the zone's own child elements
+  if (e.relatedTarget && zone.contains(e.relatedTarget)) return;
+  zone.classList.remove('drag-over');
+}
+function avatarDrop(e) {
+  e.preventDefault();
+  document.getElementById('avatarZone').classList.remove('drag-over');
+  const file = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('image/'));
+  if (!file) { showToast('Please drop an image file (JPG, PNG, WEBP)', true); return; }
+  handleAvatarFile(file);
+}
+
 function setAvatarImage(src) {
   const zone = document.getElementById('avatarZone');
   let img = zone.querySelector('img');
-  if (!img) { img = document.createElement('img'); zone.prepend(img); }
+  if (!img) { img = document.createElement('img'); img.draggable = false; zone.prepend(img); }
   img.src = src;
   document.getElementById('avatarPh').style.display = 'none';
   zone.classList.add('has-image');
